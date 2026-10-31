@@ -22,7 +22,11 @@ type Variant struct {
 	Match Match
 	Argv  []string // program followed by arguments
 	Shell bool     // run through the platform shell instead of exec'ing Argv[0]
-	Note  string   // human-readable rationale shown by `kopsc explain`
+	// Builtin names an in-process implementation registered with the executor.
+	// It is mutually exclusive with Argv and lets kopsc provide commands that
+	// have no equivalent system utility (for example on Windows).
+	Builtin string
+	Note    string // human-readable rationale shown by `kopsc explain`
 }
 
 // Command is a platform-neutral intent, e.g. "docker.clearsafe".
@@ -73,7 +77,13 @@ func (r *Registry) Validate() error {
 		}
 
 		for j, variant := range cmd.Variants {
-			if len(variant.Argv) == 0 || strings.TrimSpace(variant.Argv[0]) == "" {
+			if len(variant.Argv) == 0 && variant.Builtin == "" {
+				return fmt.Errorf("command %q variant #%d: empty argv and no builtin", cmd.ID, j)
+			}
+			if len(variant.Argv) > 0 && variant.Builtin != "" {
+				return fmt.Errorf("command %q variant #%d: argv and builtin are mutually exclusive", cmd.ID, j)
+			}
+			if len(variant.Argv) > 0 && strings.TrimSpace(variant.Argv[0]) == "" {
 				return fmt.Errorf("command %q variant #%d: empty argv", cmd.ID, j)
 			}
 			if err := variant.Match.validate(); err != nil {

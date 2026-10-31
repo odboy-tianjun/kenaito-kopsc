@@ -111,6 +111,14 @@ func findChild(parent *cobra.Command, name string) *cobra.Command {
 	return nil
 }
 
+// variantDisplay renders how a variant is executed, for list/help/explain.
+func variantDisplay(v registry.Variant) string {
+	if v.Builtin != "" {
+		return "(内置) " + v.Builtin
+	}
+	return strings.Join(v.Argv, " ")
+}
+
 func (a *App) newLeaf(cmd *registry.Command, name string) *cobra.Command {
 	leaf := &cobra.Command{
 		Use:                name + " [--dry-run] [-h] [-- 透传参数...]",
@@ -174,7 +182,7 @@ func (a *App) printLeafHelp(w io.Writer, cmd *registry.Command) {
 	fmt.Fprintf(w, "当前平台: %s\n", resolve.DescribeInfo(a.Info))
 
 	if result, err := resolve.Resolve(cmd, a.Info); err == nil {
-		fmt.Fprintf(w, "将执行: %s\n\n", strings.Join(result.Variant.Argv, " "))
+		fmt.Fprintf(w, "将执行: %s\n\n", variantDisplay(result.Variant))
 	} else {
 		fmt.Fprintf(w, "当前平台不可用: %v\n\n", err)
 	}
@@ -197,7 +205,7 @@ func (a *App) newListCmd() *cobra.Command {
 				entry := &a.Registry.Commands[i]
 				status, planned := "可用", "-"
 				if result, err := resolve.Resolve(entry, a.Info); err == nil {
-					planned = strings.Join(result.Variant.Argv, " ")
+					planned = variantDisplay(result.Variant)
 				} else {
 					status = "不可用"
 				}
@@ -230,7 +238,7 @@ func (a *App) newExplainCmd() *cobra.Command {
 				fmt.Fprintf(w, "结果: 当前平台不可用 — %v\n\n", err)
 			} else {
 				fmt.Fprintf(w, "结果: 命中变体 #%d（%d 分）→ %s\n\n",
-					result.VariantIdx, result.Score, strings.Join(result.Variant.Argv, " "))
+					result.VariantIdx, result.Score, variantDisplay(result.Variant))
 			}
 
 			fmt.Fprintln(w, "候选:")
@@ -244,7 +252,7 @@ func (a *App) newExplainCmd() *cobra.Command {
 					note = "  # " + c.Variant.Note
 				}
 				fmt.Fprintf(w, "  %s #%d %d 分  %s -> %s%s\n",
-					mark, c.Index, c.Score, c.Reason, strings.Join(c.Variant.Argv, " "), note)
+					mark, c.Index, c.Score, c.Reason, variantDisplay(c.Variant), note)
 			}
 			return nil
 		},

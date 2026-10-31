@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -238,6 +239,80 @@ func TestParseLeafArgs(t *testing.T) {
 				t.Errorf("extra = %v, want %v", extra, tc.wantExtra)
 			}
 		})
+	}
+}
+
+func TestDiskUsageCommandThroughCLI(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.bin"), bytes.Repeat([]byte("x"), 4096), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "sub", "b.bin"), bytes.Repeat([]byte("x"), 1024), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	app, stdout, stderr := testApp(centos("docker"))
+	if code := app.Execute([]string{"disk", "usage", root}); code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{"4.0K", "1.0K", "a.bin", "sub", "总计 " + root} {
+		if !strings.Contains(out, want) {
+			t.Errorf("disk usage output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestDiskUsageAcceptsPathFlagThroughCLI(t *testing.T) {
+	root := t.TempDir()
+
+	app, stdout, stderr := testApp(centos("docker"))
+	if code := app.Execute([]string{"disk", "usage", "--path", root}); code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "总计 "+root) {
+		t.Errorf("unexpected output:\n%s", stdout.String())
+	}
+}
+
+func TestDiskUsageRequiresPathThroughCLI(t *testing.T) {
+	app, _, stderr := testApp(centos("docker"))
+
+	if code := app.Execute([]string{"disk", "usage"}); code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr.String(), "必须提供路径") {
+		t.Errorf("stderr = %s", stderr.String())
+	}
+}
+
+func TestDiskUsageDryRunDoesNotTouchPath(t *testing.T) {
+	app, stdout, _ := testApp(centos("docker"))
+
+	code := app.Execute([]string{"disk", "usage", "/path/that/does/not/exist", "--dry-run"})
+	if code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "(内置) disk.usage /path/that/does/not/exist") {
+		t.Errorf("dry-run output missing builtin plan:\n%s", out)
+	}
+	if strings.Contains(out, "无法访问") {
+		t.Errorf("dry-run should not execute the builtin:\n%s", out)
+	}
+}
+
+func TestDiskUsageHelp(t *testing.T) {
+	app, stdout, _ := testApp(centos("docker"))
+
+	if code := app.Execute([]string{"disk", "usage", "-h"}); code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	if !strings.Contains(stdout.String(), "(内置) disk.usage") {
+		t.Errorf("help output missing builtin target:\n%s", stdout.String())
 	}
 }
 

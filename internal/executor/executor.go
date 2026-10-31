@@ -42,6 +42,10 @@ func (p Plan) Argv() []string {
 
 // Display renders the command line the plan would run.
 func (p Plan) Display() string {
+	if p.Result.Variant.Builtin != "" {
+		parts := append([]string{"(内置)", p.Result.Variant.Builtin}, p.ExtraArgs...)
+		return strings.Join(parts, " ")
+	}
 	argv := p.Argv()
 	if p.Result.Variant.Shell {
 		flag := "-c"
@@ -61,9 +65,12 @@ func (p Plan) Explain(w io.Writer) {
 	variant := p.Result.Variant
 	fmt.Fprintf(w, "将执行: %s\n", p.Display())
 	fmt.Fprintf(w, "平台:   %s\n", resolve.DescribeInfo(p.Result.Info))
-	if variant.Shell {
+	switch {
+	case variant.Builtin != "":
+		fmt.Fprintf(w, "方式:   内置实现（%s，不启动外部进程）\n", variant.Builtin)
+	case variant.Shell:
 		fmt.Fprintf(w, "方式:   shell (%s)\n", shellName())
-	} else {
+	default:
 		fmt.Fprintf(w, "方式:   直接执行\n")
 	}
 	note := variant.Note
@@ -92,6 +99,14 @@ func (p Plan) Run(ctx context.Context, opts Options) error {
 		fmt.Fprintln(opts.Stdout, "[dry-run] 未执行任何命令")
 		p.Explain(opts.Stdout)
 		return nil
+	}
+
+	if variant := p.Result.Variant; variant.Builtin != "" {
+		fn, ok := LookupBuiltin(variant.Builtin)
+		if !ok {
+			return fmt.Errorf("未注册的内置动作 %q", variant.Builtin)
+		}
+		return fn(ctx, BuiltinRequest{Args: p.ExtraArgs, Stdout: opts.Stdout, Stderr: opts.Stderr})
 	}
 
 	name, args := p.command()

@@ -54,11 +54,36 @@ kopsc docker clearsafe --dry-run  # 只打印将执行的命令与判定依据
 kopsc docker clearsafe -h         # 该意图的说明、当前平台命中结果与选项
 kopsc docker clearsafe -- --filter until=24h   # -- 之后的参数原样透传给底层命令
 
+kopsc disk usage /var                # 磁盘占用排行（du -x --max-depth=1 -h | sort -hr 的跨平台版）
+kopsc disk usage --path /var         # 同上，用命名参数指定路径
+kopsc disk usage /var --dry-run      # 预览（内置命令同样支持）
+
 kopsc list                        # 全部命令及当前平台可用性
 kopsc explain docker.clearsafe    # 匹配过程、全部候选及各自被选中/拒绝的原因
 kopsc platform                    # 探测到的 OS/ARCH/发行版/运行时
 kopsc version                     # 版本与平台
 ```
+
+### 磁盘占用排行（disk.usage）
+
+`kopsc disk usage <路径>` 等价于 `du -x --max-depth=1 -h <路径> | sort -hr`，但由 kopsc
+内置实现，因此 Linux、macOS、Windows 输出完全一致，不依赖 `du`、`sort` 或 PowerShell：
+
+```text
+$ kopsc disk usage /var
+1.2G     /var/lib
+800.0M   /var/cache
+4.0K     /var/tmp
+0        /var/opt
+总计      2.0G     /var
+```
+
+- 路径**必填**：位置参数（`/var`）或 `--path /var`、`--path=/var` 均可，一次一个。
+- 统计每个直接子项：普通文件按自身大小，目录递归累计其下普通文件的大小。
+- 不跟随符号链接；Unix 上通过设备号实现 `-x`（不跨文件系统），Windows 上不跟随
+  reparse point，目录遍历本身不会跨越卷。
+- 输出按大小降序，大小采用与 `du -h` 相同的二进制单位（1.0K、1.5M、2.0G）。
+- 末尾输出该路径的合计行。
 
 ### 选项解析规则
 
@@ -79,6 +104,7 @@ kopsc version                     # 版本与平台
 | 命令 | 说明 | 平台变体 |
 | --- | --- | --- |
 | `docker.clearsafe` | 安全清理容器/网络/构建缓存 | Linux(centos)+podman、Linux(centos)+docker、Linux+podman、Linux+docker、darwin+docker、windows+docker，均为 `system prune -f` |
+| `disk.usage` | 目录占用排行（等价 `du -x --max-depth=1 -h <路径> \| sort -hr`） | Linux/macOS/Windows 均使用 kopsc 内置实现，保证输出一致 |
 | `net.ports` | 列出监听中的端口 | Linux `ss -tulnp`、macOS `lsof -iTCP -sTCP:LISTEN -nP`、Windows `netstat -ano` |
 | `pkg.refreshindex` | 刷新包管理器索引 | centos `dnf makecache`、ID_LIKE rhel/fedora `dnf makecache`、ID_LIKE debian/ubuntu `apt-get update`、alpine `apk update`、macOS `brew update`、Windows `winget source update` |
 
@@ -127,6 +153,9 @@ kopsc version                     # 版本与平台
 ```
 
 - `Argv[0]` 是程序，其余是参数；需要 shell 语义时设 `Shell: true`（Linux/macOS 用 `sh -c`，Windows 用 `cmd /c`）。
+- 当平台没有可移植的系统命令时，用 `Builtin` 代替 `Argv`（二者互斥）：
+  `Builtin: "disk.usage"` 指向 [`internal/executor`](internal/executor) 中注册的实现，
+  这样三平台共用同一份逻辑。新增内置动作需在 `executor.builtins` 中注册。
 - 新增命令时给 `Command` 填 `ID`（点号分隔，决定 CLI 层级）、`Summary`、`Action`，别名不得重复。
 - 提交前跑 `go test ./...`：`registry.Validate()` 与快照测试会拦截重复 ID/别名、空变体、空 argv。
 

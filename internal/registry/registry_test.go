@@ -15,7 +15,7 @@ func TestBuiltinIsValid(t *testing.T) {
 
 func TestBuiltinIDsStable(t *testing.T) {
 	reg := Builtin()
-	want := []string{"docker.clearsafe", "net.ports", "pkg.refreshindex"}
+	want := []string{"docker.clearsafe", "disk.usage", "net.ports", "pkg.refreshindex"}
 	if got := reg.IDs(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("IDs() = %v, want %v", got, want)
 	}
@@ -129,6 +129,45 @@ func TestValidateErrors(t *testing.T) {
 				t.Fatalf("error %q does not contain %q", err, tc.wantErr)
 			}
 		})
+	}
+}
+
+func TestValidateBuiltinVariants(t *testing.T) {
+	builtinOnly := plainCommand("a")
+	builtinOnly.Variants = []Variant{{Match: Match{OS: "linux"}, Builtin: "demo.action"}}
+
+	if err := (&Registry{Commands: []Command{builtinOnly}}).Validate(); err != nil {
+		t.Fatalf("builtin-only variant should be valid: %v", err)
+	}
+
+	both := plainCommand("a")
+	both.Variants = []Variant{{Match: Match{OS: "linux"}, Argv: []string{"x"}, Builtin: "demo.action"}}
+	err := (&Registry{Commands: []Command{both}}).Validate()
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("err = %v, want mutual-exclusion error", err)
+	}
+}
+
+func TestDiskUsageIsBuiltinEverywhere(t *testing.T) {
+	reg := Builtin()
+	cmd, ok := reg.Lookup("disk.usage")
+	if !ok {
+		t.Fatal("disk.usage not found")
+	}
+	seen := map[string]bool{}
+	for _, variant := range cmd.Variants {
+		if variant.Builtin != "disk.usage" {
+			t.Errorf("variant for %s should use the disk.usage builtin, got %q", variant.Match.OS, variant.Builtin)
+		}
+		if len(variant.Argv) != 0 {
+			t.Errorf("builtin variant must not carry argv: %v", variant.Argv)
+		}
+		seen[variant.Match.OS] = true
+	}
+	for _, osName := range []string{"linux", "darwin", "windows"} {
+		if !seen[osName] {
+			t.Errorf("disk.usage lacks a %s variant", osName)
+		}
 	}
 }
 

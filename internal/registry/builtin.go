@@ -45,6 +45,32 @@ func Builtin() *Registry {
 			},
 		},
 		{
+			ID:      "disk.usage",
+			Aliases: []string{"disk.du"},
+			Group:   "disk",
+			Summary: "列出目录下各直接子项的占用空间，按大小降序",
+			Action: "等价于 du -x --max-depth=1 -h <路径> | sort -hr：统计每个直接子项（文件或目录递归）的占用，" +
+				"不跨越文件系统边界，末尾输出该路径的合计。路径必填，可作位置参数或用 --path 指定；" +
+				"由于 Windows 没有等价的 du/sort，这里使用 kopsc 内置实现以保证三平台输出一致",
+			Variants: []Variant{
+				{
+					Match:   Match{OS: "linux"},
+					Builtin: "disk.usage",
+					Note:    "Linux 内置实现（等价 du -x -d 1 -h | sort -hr）",
+				},
+				{
+					Match:   Match{OS: "darwin"},
+					Builtin: "disk.usage",
+					Note:    "macOS 内置实现（BSD du 不支持 --max-depth）",
+				},
+				{
+					Match:   Match{OS: "windows"},
+					Builtin: "disk.usage",
+					Note:    "Windows 内置实现（系统没有 du/sort）",
+				},
+			},
+		},
+		{
 			ID:      "net.ports",
 			Group:   "net",
 			Summary: "列出本机正在监听的 TCP/UDP 端口",
