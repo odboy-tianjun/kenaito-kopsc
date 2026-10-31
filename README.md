@@ -49,10 +49,22 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
 ## 用法
 
 ```bash
+kopsc docker ps                   # 列出运行中的容器
+kopsc docker psall                # 含已停止的容器
+kopsc docker logs -f web          # 查看日志（容器名必填，选项可透传）
+kopsc docker exec -it web sh      # 进入容器
+kopsc docker compose up           # 启动 Compose 服务
+kopsc docker clearall --yes       # 深度清理（破坏性命令，必须显式 --yes）
+
 kopsc docker clearsafe            # 直接执行当前平台对应的清理命令
 kopsc docker clearsafe --dry-run  # 只打印将执行的命令与判定依据
 kopsc docker clearsafe -h         # 该意图的说明、当前平台命中结果与选项
 kopsc docker clearsafe -- --filter until=24h   # -- 之后的参数原样透传给底层命令
+
+kopsc diagnose web                 # 自动识别 Docker 容器或 K8s Pod，给出根因
+kopsc diagnose api-0 -n prod       # K8s：本命令里 -n 表示 namespace
+kopsc diagnose api-0 --kind k8s --context staging
+kopsc diagnose web --lines 200 --no-events
 
 kopsc disk usage /var                # 磁盘占用排行（du -x --max-depth=1 -h | sort -hr 的跨平台版）
 kopsc disk usage --path /var         # 同上，用命名参数指定路径
@@ -93,23 +105,81 @@ $ kopsc disk usage /var
 | --- | --- |
 | `-n`, `--dry-run`, `--dry-run=true` | 置为预览模式，不执行 |
 | `--dry-run=false` | 关闭预览模式 |
+| `-y`, `--yes` | 确认执行破坏性命令；未提供时只打印影响范围并以退出码 2 结束 |
 | `-h`, `--help` | 打印该命令的帮助 |
-| `--` | 其后的所有参数原样透传给底层命令 |
+| `--` | 其后的所有参数原样透传给底层命令（并全部计入位置参数） |
 | 其它任何参数 | 原样透传给底层命令（包括未知 flag） |
 
 因此底层命令的 flag 不会与 kopsc 自身的选项冲突。
 
+需要容器名/镜像名的命令会做必填校验（例如 `kopsc docker logs` 缺容器名时直接报错，
+并给出 `kopsc docker logs <容器>` 的用法），避免把参数错误留给底层命令才发现。
+
 ## 内置命令
+
+### Docker（`kopsc docker <子命令>`）
+
+| 分组 | 命令 |
+| --- | --- |
+| 只读 | `ps`、`psall`、`images`、`stats`、`df`、`info`、`version`、`logs`、`inspect`、`networks`、`volumes` |
+| 生命周期 | `start`、`stop`、`restart`、`rm`、`rmi`、`exec`、`pull`、`tag`、`save`、`load`、`cp` |
+| 清理 | `clearsafe`、`pruneimages`、`prunecontainers`、`prunenets`、`prunebuilder`、`prunevolumes`、`clearall` |
+| Compose | `compose up`、`compose down`、`compose ps`、`compose logs` |
+
+- 所有 Docker 命令在 Linux 上同时提供 `docker` 与 `podman` 变体，且 podman 优先；
+  macOS / Windows 使用 Docker Desktop。
+- `logs`、`inspect`、`start`、`stop`、`restart`、`rm`、`rmi`、`exec`、`pull`、`tag`、`save`、`cp`
+  需要位置参数，缺失时直接报错并给出用法。
+- 破坏性命令只有 `clearall`（`system prune -a -f`）与 `prunevolumes`（`volume prune -f`）：
+  未带 `--yes` 时只打印影响范围与将执行的命令，并以退出码 2 结束。
+- `docker compose` 对应 Compose v2；`podman compose` 需要 podman 4+。
+- `docker clearsafe` 的安全契约：只加 `-f` 以便无人值守执行，**不**加 `-a`（不清理全部未使用镜像），
+  **不**加 `--volumes`（不删除卷），仅清理停止的容器、未使用的网络与悬空镜像。
+
+### 容器/Pod 诊断（diagnose）
+
+`kopsc diagnose <名称>` 自动判断目标是 Docker/Podman 容器还是 Kubernetes Pod，输出状态、根因、依据、建议，并附最近日志与事件。只读，不修改任何对象。
+
+```text
+目标:   web
+来源:   Docker (docker)
+状态:   exited  ExitCode=137  OOMKilled=true  RestartCount=3
+镜像:   nginx:1.25
+判定:   ❌ 容器因内存超限被 OOM kill
+依据:   State.Status=exited, ExitCode=137, OOMKilled=true, RestartCount=3
+建议:   提高容器的内存限制，或降低应用峰值内存；可用 kopsc docker stats 观察
+
+最近日志 (50 行):
+...
+最近事件 (1h):
+...
+```
+
+| 参数 | 说明 |
+| --- | --- |
+| `--kind docker\|k8s` | 强制来源；默认自动识别：先 `docker inspect`，未命中再 `kubectl get pod` |
+| `-n`, `-N`, `--namespace` | **仅 diagnose**：Kubernetes 命名空间。默认取 kubeconfig 当前上下文，未设置则为 `default` |
+| `--context` | kubectl 上下文 |
+| `-c`, `--container` | 多容器 Pod 只看指定容器（默认输出全部容器） |
+| `--lines N` | 日志行数，默认 50 |
+| `--no-logs` / `--no-events` | 跳过日志 / 事件采集 |
+| `--dry-run` | 只预览将执行的诊断动作，不调用 docker/kubectl |
+
+> `-n` 只在 `kopsc diagnose` 中表示 namespace；其它命令里 `-n` 仍是 `--dry-run` 的简写。
+> Docker 模式下传 `--namespace`/`--context` 会直接报错，不会静默忽略。
+
+判定覆盖：Docker 的 OOMKilled、ExitCode 137/143/126/127、正常退出、重启循环、unhealthy、created/paused/dead；
+Kubernetes 的 CrashLoopBackOff、ImagePullBackOff/ErrImagePull、CreateContainerConfigError、OOMKilled、
+Pending（结合 FailedScheduling/FailedMount 事件）、Evicted 等。
+
+### 其它
 
 | 命令 | 说明 | 平台变体 |
 | --- | --- | --- |
-| `docker.clearsafe` | 安全清理容器/网络/构建缓存 | Linux(centos)+podman、Linux(centos)+docker、Linux+podman、Linux+docker、darwin+docker、windows+docker，均为 `system prune -f` |
+| `diagnose` | 容器/Pod 状态根因诊断（自动识别 Docker 与 Kubernetes） | Linux/macOS/Windows 均使用 kopsc 内置实现 |
 | `disk.usage` | 目录占用排行（等价 `du -x --max-depth=1 -h <路径> \| sort -hr`） | Linux/macOS/Windows 均使用 kopsc 内置实现，保证输出一致 |
 | `net.ports` | 列出监听中的端口 | Linux `ss -tulnp`、macOS `lsof -iTCP -sTCP:LISTEN -nP`、Windows `netstat -ano` |
 | `pkg.refreshindex` | 刷新包管理器索引 | centos `dnf makecache`、ID_LIKE rhel/fedora `dnf makecache`、ID_LIKE debian/ubuntu `apt-get update`、alpine `apk update`、macOS `brew update`、Windows `winget source update` |
-
-`docker clearsafe` 的安全契约：只加 `-f` 以便无人值守执行，**不**加 `-a`（不清理全部未使用镜像），
-**不**加 `--volumes`（不删除卷），仅清理停止的容器、未使用的网络与悬空镜像。
 
 ## 平台识别
 

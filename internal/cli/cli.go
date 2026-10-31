@@ -26,6 +26,10 @@ type App struct {
 	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
+
+	// exitCode is set by commands that intentionally exit non-zero without an
+	// error (for example a destructive command awaiting --yes).
+	exitCode int
 }
 
 // New returns an App for the running process.
@@ -42,13 +46,14 @@ func New(version string) *App {
 
 // Execute runs the command tree and returns the process exit code.
 func (a *App) Execute(args []string) int {
+	a.exitCode = 0
 	root := a.Root()
 	root.SetArgs(args)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(a.Stderr, "kopsc: "+err.Error())
 		return executor.ExitCode(err)
 	}
-	return 0
+	return a.exitCode
 }
 
 // Root builds the full cobra command tree.
@@ -126,10 +131,17 @@ func (a *App) newLeaf(cmd *registry.Command, name string) *cobra.Command {
 		Long:               cmd.Summary + "\n\n动作: " + cmd.Action,
 		DisableFlagParsing: true,
 		RunE: func(c *cobra.Command, args []string) error {
-			dryRun, extra, help := parseLeafArgs(args)
+			dryRun, yes, extra, help, err := parseLeafArgs(cmd, args)
+			if err != nil {
+				return err
+			}
 			if help {
 				a.printLeafHelp(c.OutOrStdout(), cmd)
 				return nil
+			}
+
+			if err := cmd.ValidateArgs(extra); err != nil {
+				return err
 			}
 
 			result, err := resolve.Resolve(cmd, a.Info)
@@ -138,6 +150,13 @@ func (a *App) newLeaf(cmd *registry.Command, name string) *cobra.Command {
 			}
 
 			plan := executor.Plan{Result: result, ExtraArgs: extra}
+
+			if cmd.RequiresYes && !yes && !dryRun {
+				a.printConfirmation(cmd, plan)
+				a.exitCode = 2
+				return nil
+			}
+
 			return plan.Run(context.Background(), executor.Options{
 				DryRun: dryRun,
 				Stdin:  a.Stdin,
@@ -149,34 +168,79 @@ func (a *App) newLeaf(cmd *registry.Command, name string) *cobra.Command {
 	return leaf
 }
 
+// printConfirmation explains a destructive command and how to approve it.
+func (a *App) printConfirmation(cmd *registry.Command, plan executor.Plan) {
+	w := a.Stdout
+	fmt.Fprintln(w, "这是破坏性命令，未执行。")
+	fmt.Fprintf(w, "命令:   %s\n", cmd.Invocation())
+	fmt.Fprintf(w, "将执行: %s\n", plan.Display())
+	fmt.Fprintf(w, "影响:   %s\n\n", cmd.Action)
+	fmt.Fprintf(w, "确认执行请追加 --yes：\n  %s --yes\n", cmd.Invocation())
+}
+
 // parseLeafArgs splits leaf arguments: kopsc-level flags before the first `--`
 // are consumed, everything else (including `--` and after) is forwarded.
-func parseLeafArgs(args []string) (dryRun bool, extra []string, help bool) {
+//
+// For commands marked Namespaced (Kubernetes-aware), -n/-N mean --namespace
+// (kubectl style) and are normalised to --namespace; --dry-run remains the
+// only preview flag. On every other command -n keeps its --dry-run meaning.
+func parseLeafArgs(cmd *registry.Command, args []string) (dryRun, yes bool, extra []string, help bool, err error) {
 	passthrough := false
-	for _, arg := range args {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
 		if passthrough {
 			extra = append(extra, arg)
 			continue
 		}
+
 		switch {
 		case arg == "--":
 			passthrough = true
+
+		case cmd.Namespaced && (arg == "-n" || arg == "-N" || arg == "--namespace"):
+			if i+1 >= len(args) {
+				return false, false, nil, false,
+					fmt.Errorf("%s: %s 需要命名空间参数，例如 %s prod", cmd.Invocation(), arg, arg)
+			}
+			i++
+			extra = append(extra, "--namespace", args[i])
+
+		case cmd.Namespaced && strings.HasPrefix(arg, "-n="):
+			extra = append(extra, "--namespace="+strings.TrimPrefix(arg, "-n="))
+
+		case cmd.Namespaced && strings.HasPrefix(arg, "-N="):
+			extra = append(extra, "--namespace="+strings.TrimPrefix(arg, "-N="))
+
+		case cmd.Namespaced && strings.HasPrefix(arg, "--namespace="):
+			extra = append(extra, arg)
+
 		case arg == "-n" || arg == "--dry-run" || arg == "--dry-run=true":
 			dryRun = true
+
 		case arg == "--dry-run=false":
 			dryRun = false
+
+		case arg == "-y" || arg == "--yes":
+			yes = true
+
 		case arg == "-h" || arg == "--help":
 			help = true
+
 		default:
 			extra = append(extra, arg)
 		}
 	}
-	return dryRun, extra, help
+	return dryRun, yes, extra, help, nil
 }
 
 func (a *App) printLeafHelp(w io.Writer, cmd *registry.Command) {
-	invocation := "kopsc " + strings.ReplaceAll(cmd.ID, ".", " ")
-	fmt.Fprintf(w, "用法: %s [--dry-run] [-h] [-- 透传参数...]\n\n", invocation)
+	invocation := cmd.Invocation()
+	argsHint := ""
+	if cmd.Usage != "" {
+		argsHint = " " + cmd.Usage
+	}
+	fmt.Fprintf(w, "用法: %s [--dry-run] [-h] [--yes]%s [-- 透传参数...]\n\n", invocation, argsHint)
 	fmt.Fprintf(w, "%s\n\n", cmd.Summary)
 	fmt.Fprintf(w, "动作: %s\n\n", cmd.Action)
 	fmt.Fprintf(w, "当前平台: %s\n", resolve.DescribeInfo(a.Info))
@@ -190,7 +254,13 @@ func (a *App) printLeafHelp(w io.Writer, cmd *registry.Command) {
 	fmt.Fprint(w, "选项:\n")
 	fmt.Fprint(w, "  -n, --dry-run  仅打印将执行的命令与判定依据，不执行\n")
 	fmt.Fprint(w, "  -h, --help     显示本帮助\n")
+	if cmd.RequiresYes {
+		fmt.Fprint(w, "  -y, --yes      确认执行破坏性命令（否则只打印影响并以状态码 2 退出）\n")
+	}
 	fmt.Fprint(w, "  --             其后的参数原样透传给底层命令\n")
+	if cmd.Usage != "" {
+		fmt.Fprintf(w, "\n参数: %s（至少 %d 个）\n", cmd.Usage, cmd.MinArgs)
+	}
 }
 
 func (a *App) newListCmd() *cobra.Command {

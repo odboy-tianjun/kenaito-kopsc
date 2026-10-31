@@ -39,7 +39,7 @@ func TestLeafDryRun(t *testing.T) {
 		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
 	}
 	out := stdout.String()
-	for _, want := range []string{"[dry-run]", "docker system prune -f", "CentOS 上的 Docker 运行时", "依据"} {
+	for _, want := range []string{"[dry-run]", "docker system prune -f", "Linux 上的 Docker 运行时", "依据"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dry-run output missing %q:\n%s", want, out)
 		}
@@ -212,33 +212,141 @@ func TestGroupHelp(t *testing.T) {
 }
 
 func TestParseLeafArgs(t *testing.T) {
+	plain := &registry.Command{ID: "docker.logs"}
+	namespaced := &registry.Command{ID: "diagnose", Namespaced: true}
+
 	tests := []struct {
 		name       string
+		cmd        *registry.Command
 		args       []string
 		wantDryRun bool
+		wantYes    bool
 		wantExtra  []string
 		wantHelp   bool
+		wantErr    bool
 	}{
-		{"empty", nil, false, nil, false},
-		{"dry-run short", []string{"-n"}, true, nil, false},
-		{"dry-run long", []string{"--dry-run"}, true, nil, false},
-		{"dry-run false", []string{"--dry-run=false"}, false, nil, false},
-		{"help", []string{"-h"}, false, nil, true},
-		{"passthrough", []string{"--", "--dry-run", "-h"}, false, []string{"--dry-run", "-h"}, false},
-		{"unknown flags forwarded", []string{"--filter", "until=1h"}, false, []string{"--filter", "until=1h"}, false},
-		{"mixed", []string{"--dry-run", "arg", "--", "-n"}, true, []string{"arg", "-n"}, false},
+		{"empty", plain, nil, false, false, nil, false, false},
+		{"plain -n is dry-run", plain, []string{"-n"}, true, false, nil, false, false},
+		{"dry-run long", plain, []string{"--dry-run"}, true, false, nil, false, false},
+		{"dry-run false", plain, []string{"--dry-run=false"}, false, false, nil, false, false},
+		{"yes long", plain, []string{"--yes"}, false, true, nil, false, false},
+		{"yes short", plain, []string{"-y"}, false, true, nil, false, false},
+		{"help", plain, []string{"-h"}, false, false, nil, true, false},
+		{"passthrough", plain, []string{"--", "--dry-run", "-h", "--yes"}, false, false, []string{"--dry-run", "-h", "--yes"}, false, false},
+		{"unknown flags forwarded", plain, []string{"--filter", "until=1h"}, false, false, []string{"--filter", "until=1h"}, false, false},
+		{"mixed", plain, []string{"--dry-run", "arg", "--", "-n"}, true, false, []string{"arg", "-n"}, false, false},
+
+		{"namespaced -n", namespaced, []string{"api-0", "-n", "prod"}, false, false, []string{"api-0", "--namespace", "prod"}, false, false},
+		{"namespaced -n=value", namespaced, []string{"api-0", "-n=prod"}, false, false, []string{"api-0", "--namespace=prod"}, false, false},
+		{"namespaced -N", namespaced, []string{"api-0", "-N", "prod"}, false, false, []string{"api-0", "--namespace", "prod"}, false, false},
+		{"namespaced --namespace", namespaced, []string{"api-0", "--namespace", "prod"}, false, false, []string{"api-0", "--namespace", "prod"}, false, false},
+		{"namespaced --namespace=value", namespaced, []string{"api-0", "--namespace=prod"}, false, false, []string{"api-0", "--namespace=prod"}, false, false},
+		{"namespaced --dry-run still previews", namespaced, []string{"api-0", "--dry-run"}, true, false, []string{"api-0"}, false, false},
+		{"namespaced -n without value", namespaced, []string{"api-0", "-n"}, false, false, nil, false, true},
+		{"namespaced passthrough keeps -n", namespaced, []string{"--", "-n", "prod"}, false, false, []string{"-n", "prod"}, false, false},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			dryRun, extra, help := parseLeafArgs(tc.args)
-			if dryRun != tc.wantDryRun || help != tc.wantHelp {
-				t.Errorf("dryRun=%v help=%v, want %v/%v", dryRun, help, tc.wantDryRun, tc.wantHelp)
+			dryRun, yes, extra, help, err := parseLeafArgs(tc.cmd, tc.args)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if dryRun != tc.wantDryRun || yes != tc.wantYes || help != tc.wantHelp {
+				t.Errorf("dryRun=%v yes=%v help=%v, want %v/%v/%v",
+					dryRun, yes, help, tc.wantDryRun, tc.wantYes, tc.wantHelp)
 			}
 			if strings.Join(extra, "|") != strings.Join(tc.wantExtra, "|") {
 				t.Errorf("extra = %v, want %v", extra, tc.wantExtra)
 			}
 		})
+	}
+}
+
+func TestDestructiveCommandRequiresYes(t *testing.T) {
+	app, stdout, stderr := testApp(centos("docker"))
+
+	code := app.Execute([]string{"docker", "clearall"})
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2", code)
+	}
+	out := stdout.String()
+	for _, want := range []string{"破坏性命令", "将执行: docker system prune -a -f", "影响", "kopsc docker clearall --yes"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("confirmation output missing %q:\n%s", want, out)
+		}
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("unexpected stderr: %s", stderr.String())
+	}
+}
+
+func TestDestructiveCommandDryRunNeedsNoYes(t *testing.T) {
+	app, stdout, _ := testApp(centos("docker"))
+
+	if code := app.Execute([]string{"docker", "prunevolumes", "--dry-run"}); code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if !strings.Contains(stdout.String(), "docker volume prune -f") {
+		t.Errorf("dry-run output:\n%s", stdout.String())
+	}
+}
+
+func TestYesIsNotForwarded(t *testing.T) {
+	app, stdout, _ := testApp(centos("docker"))
+
+	if code := app.Execute([]string{"docker", "clearall", "--yes", "--dry-run"}); code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	out := stdout.String()
+	if strings.Contains(out, "--yes") {
+		t.Errorf("--yes leaked into the forwarded args:\n%s", out)
+	}
+	if !strings.Contains(out, "docker system prune -a -f") {
+		t.Errorf("unexpected dry-run output:\n%s", out)
+	}
+}
+
+func TestMissingRequiredArgs(t *testing.T) {
+	app, _, stderr := testApp(centos("docker"))
+
+	if code := app.Execute([]string{"docker", "logs"}); code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	msg := stderr.String()
+	for _, want := range []string{"缺少参数", "kopsc docker logs <容器>"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("stderr missing %q:\n%s", want, msg)
+		}
+	}
+}
+
+func TestMissingArgsWhenOnlyOptionsGiven(t *testing.T) {
+	app, _, stderr := testApp(centos("docker"))
+
+	if code := app.Execute([]string{"docker", "rm", "-f"}); code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr.String(), "缺少参数") {
+		t.Errorf("stderr = %s", stderr.String())
+	}
+}
+
+func TestDestructiveHelpMentionsYes(t *testing.T) {
+	app, stdout, _ := testApp(centos("docker"))
+
+	if code := app.Execute([]string{"docker", "clearall", "-h"}); code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "--yes") || !strings.Contains(out, "状态码 2") {
+		t.Errorf("help missing --yes documentation:\n%s", out)
 	}
 }
 
@@ -313,6 +421,42 @@ func TestDiskUsageHelp(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "(内置) disk.usage") {
 		t.Errorf("help output missing builtin target:\n%s", stdout.String())
+	}
+}
+
+func TestDiagnoseDryRun(t *testing.T) {
+	app, stdout, stderr := testApp(centos("docker"))
+
+	if code := app.Execute([]string{"diagnose", "web", "--dry-run"}); code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{"[dry-run]", "(内置) diagnose web", "内置实现"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("dry-run output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestDiagnoseNamespaceTranslationThroughCLI(t *testing.T) {
+	app, stdout, _ := testApp(centos("docker"))
+
+	if code := app.Execute([]string{"diagnose", "api-0", "-n", "prod", "--dry-run"}); code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	if !strings.Contains(stdout.String(), "api-0 --namespace prod") {
+		t.Errorf("-n was not translated to --namespace:\n%s", stdout.String())
+	}
+}
+
+func TestDiagnoseRequiresTarget(t *testing.T) {
+	app, _, stderr := testApp(centos("docker"))
+
+	if code := app.Execute([]string{"diagnose"}); code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr.String(), "缺少参数") {
+		t.Errorf("stderr = %s", stderr.String())
 	}
 }
 

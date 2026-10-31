@@ -31,12 +31,73 @@ type Variant struct {
 
 // Command is a platform-neutral intent, e.g. "docker.clearsafe".
 type Command struct {
-	ID       string // hierarchical, dot-separated: "docker.clearsafe"
-	Aliases  []string
-	Summary  string
-	Group    string // CLI grouping, e.g. "docker"
-	Action   string // what the command does, including its safety contract
+	ID      string // hierarchical, dot-separated: "docker.clearsafe"
+	Aliases []string
+	Summary string
+	Group   string // CLI grouping, e.g. "docker"
+	Action  string // what the command does, including its safety contract
+
+	// Usage describes the positional arguments, e.g. "<容器>".
+	Usage string
+	// MinArgs is the number of positional arguments required before the
+	// command is allowed to run. Options before "--" are not counted.
+	MinArgs int
+	// RequiresYes marks destructive commands: without an explicit --yes they
+	// print what they would do and exit non-zero instead of running.
+	RequiresYes bool
+	// Namespaced marks Kubernetes-aware commands where -n means --namespace
+	// (kubectl style) instead of the global --dry-run shorthand.
+	Namespaced bool
+
 	Variants []Variant
+}
+
+// ValidateArgs reports whether the caller supplied enough positional
+// arguments. Everything after "--" counts as positional; before it, arguments
+// starting with "-" are treated as options and skipped.
+func (c *Command) ValidateArgs(args []string) error {
+	if c.MinArgs <= 0 {
+		return nil
+	}
+
+	count := 0
+	positionalOnly := false
+	for _, arg := range args {
+		switch {
+		case positionalOnly:
+			count++
+		case arg == "--":
+			positionalOnly = true
+		case strings.HasPrefix(arg, "-") && arg != "-":
+			// Option; value-taking options are not distinguishable, so their
+			// values may be counted later in the list. This is deliberately a
+			// loose check: the underlying tool still validates precisely.
+		default:
+			count++
+		}
+	}
+
+	if count < c.MinArgs {
+		return &MissingArgsError{Command: c, Got: count}
+	}
+	return nil
+}
+
+// Invocation renders the CLI form of a command, e.g. "kopsc docker logs".
+func (c *Command) Invocation() string {
+	return "kopsc " + strings.ReplaceAll(c.ID, ".", " ")
+}
+
+// MissingArgsError reports too few positional arguments.
+type MissingArgsError struct {
+	Command *Command
+	Got     int
+}
+
+func (e *MissingArgsError) Error() string {
+	usage := strings.TrimSpace(e.Command.Usage)
+	return fmt.Sprintf("命令 %s 缺少参数：需要至少 %d 个（%s），实际 %d 个；用法: %s %s",
+		e.Command.ID, e.Command.MinArgs, usage, e.Got, e.Command.Invocation(), usage)
 }
 
 // Registry is an ordered set of commands.
@@ -64,6 +125,15 @@ func (r *Registry) Validate() error {
 		}
 		if len(cmd.Variants) == 0 {
 			return fmt.Errorf("command %q: no variants", cmd.ID)
+		}
+		if cmd.MinArgs < 0 {
+			return fmt.Errorf("command %q: MinArgs must not be negative", cmd.ID)
+		}
+		if cmd.MinArgs > 0 && strings.TrimSpace(cmd.Usage) == "" {
+			return fmt.Errorf("command %q: MinArgs requires a Usage string", cmd.ID)
+		}
+		if cmd.RequiresYes && strings.TrimSpace(cmd.Action) == "" {
+			return fmt.Errorf("command %q: RequiresYes requires an Action description", cmd.ID)
 		}
 
 		for _, alias := range cmd.Aliases {

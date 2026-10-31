@@ -3,6 +3,9 @@ package executor
 import (
 	"context"
 	"io"
+
+	"gitea.odboy.cn/odboy/kenaito-kopsc/internal/diagnose"
+	"gitea.odboy.cn/odboy/kenaito-kopsc/internal/platform"
 )
 
 // BuiltinRequest carries the caller's arguments and output streams to an
@@ -11,6 +14,7 @@ type BuiltinRequest struct {
 	Args   []string
 	Stdout io.Writer
 	Stderr io.Writer
+	Info   platform.Info
 }
 
 // Builtin executes a command inside kopsc instead of spawning a child. It is
@@ -19,6 +23,13 @@ type Builtin func(ctx context.Context, req BuiltinRequest) error
 
 var builtins = map[string]Builtin{
 	"disk.usage": runDiskUsage,
+	"diagnose":   runDiagnose,
+}
+
+// runDiagnose bridges the registry builtin to the diagnose package.
+func runDiagnose(ctx context.Context, req BuiltinRequest) error {
+	service := diagnose.New(req.Info, diagnose.ExecRunner{}, req.Stdout, req.Stderr)
+	return service.Run(ctx, req.Args)
 }
 
 // LookupBuiltin returns the implementation registered under name.

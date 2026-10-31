@@ -106,7 +106,12 @@ func (p Plan) Run(ctx context.Context, opts Options) error {
 		if !ok {
 			return fmt.Errorf("未注册的内置动作 %q", variant.Builtin)
 		}
-		return fn(ctx, BuiltinRequest{Args: p.ExtraArgs, Stdout: opts.Stdout, Stderr: opts.Stderr})
+		return fn(ctx, BuiltinRequest{
+			Args:   p.ExtraArgs,
+			Stdout: opts.Stdout,
+			Stderr: opts.Stderr,
+			Info:   p.Result.Info,
+		})
 	}
 
 	name, args := p.command()
