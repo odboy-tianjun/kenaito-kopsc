@@ -39,26 +39,18 @@ func TestResolveBuiltin(t *testing.T) {
 		wantIdx   int
 	}{
 		{
-			name:      "centos with podman and docker prefers podman",
-			id:        "docker.clearsafe",
-			info:      env("linux", "amd64", "centos", []string{"rhel", "fedora"}, "docker", "podman"),
-			wantArgv:  []string{"podman", "system", "prune", "-f"},
-			wantScore: 2,
-			wantIdx:   0,
-		},
-		{
-			name:      "centos with docker only",
+			name:      "centos with docker",
 			id:        "docker.clearsafe",
 			info:      env("linux", "amd64", "centos", []string{"rhel", "fedora"}, "docker"),
 			wantArgv:  []string{"docker", "system", "prune", "-f"},
 			wantScore: 2,
-			wantIdx:   1,
+			wantIdx:   0,
 		},
 		{
-			name:      "generic linux with podman and docker prefers podman",
+			name:      "generic linux with docker",
 			id:        "docker.clearsafe",
-			info:      env("linux", "amd64", "ubuntu", []string{"debian"}, "docker", "podman"),
-			wantArgv:  []string{"podman", "system", "prune", "-f"},
+			info:      env("linux", "amd64", "ubuntu", []string{"debian"}, "docker"),
+			wantArgv:  []string{"docker", "system", "prune", "-f"},
 			wantScore: 2,
 			wantIdx:   0,
 		},
@@ -68,7 +60,7 @@ func TestResolveBuiltin(t *testing.T) {
 			info:      env("linux", "amd64", "rocky", []string{"rhel", "centos"}, "docker"),
 			wantArgv:  []string{"docker", "system", "prune", "-f"},
 			wantScore: 2,
-			wantIdx:   1,
+			wantIdx:   0,
 		},
 		{
 			name:      "darwin docker",
@@ -76,7 +68,7 @@ func TestResolveBuiltin(t *testing.T) {
 			info:      env("darwin", "arm64", "", nil, "docker"),
 			wantArgv:  []string{"docker", "system", "prune", "-f"},
 			wantScore: 2,
-			wantIdx:   2,
+			wantIdx:   1,
 		},
 		{
 			name:      "windows docker",
@@ -84,7 +76,7 @@ func TestResolveBuiltin(t *testing.T) {
 			info:      env("windows", "amd64", "", nil, "docker"),
 			wantArgv:  []string{"docker", "system", "prune", "-f"},
 			wantScore: 2,
-			wantIdx:   3,
+			wantIdx:   2,
 		},
 		{
 			name:      "centos refreshes with dnf exactly",
@@ -277,7 +269,7 @@ func TestEvaluateRejects(t *testing.T) {
 		{"arch", registry.Match{Arch: "arm64"}, "arch=arm64"},
 		{"distro", registry.Match{Distro: "debian"}, "distro=debian"},
 		{"distro like", registry.Match{DistroLike: []string{"debian"}}, "ID_LIKE"},
-		{"runtime", registry.Match{Runtime: "podman"}, "podman"},
+		{"runtime", registry.Match{Runtime: "cri-o"}, "cri-o"},
 	}
 
 	for _, tc := range cases {

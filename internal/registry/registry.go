@@ -14,7 +14,7 @@ type Match struct {
 	Arch       string   // runtime.GOARCH
 	Distro     string   // exact os-release ID, e.g. "centos"
 	DistroLike []string // os-release ID_LIKE ancestry, e.g. "rhel"
-	Runtime    string   // container runtime required on PATH, e.g. "podman"
+	Runtime    string   // container runtime required on PATH, e.g. "docker"
 }
 
 // Variant is one concrete implementation of a command.
@@ -27,6 +27,10 @@ type Variant struct {
 	// have no equivalent system utility (for example on Windows).
 	Builtin string
 	Note    string // human-readable rationale shown by `kopsc explain`
+	// Runtime records which container runtime a builtin should drive when
+	// Argv cannot carry it (builtin variants have no argv). Resolution uses
+	// Match.Runtime; this field is only informational context for the builtin.
+	Runtime string
 }
 
 // Command is a platform-neutral intent, e.g. "docker.clearsafe".

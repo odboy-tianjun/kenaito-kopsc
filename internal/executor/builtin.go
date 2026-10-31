@@ -15,6 +15,10 @@ type BuiltinRequest struct {
 	Stdout io.Writer
 	Stderr io.Writer
 	Info   platform.Info
+	// Plan is the resolved variant and forwarded arguments. Builtins that
+	// drive an external runtime (for example docker save) read the runtime's
+	// program name and the passthrough arguments from it.
+	Plan Plan
 }
 
 // Builtin executes a command inside kopsc instead of spawning a child. It is
@@ -22,9 +26,12 @@ type BuiltinRequest struct {
 type Builtin func(ctx context.Context, req BuiltinRequest) error
 
 var builtins = map[string]Builtin{
-	"disk.usage": runDiskUsage,
-	"diagnose":   runDiagnose,
-	"net.pids":   runNetPIDs,
+	"disk.usage":  runDiskUsage,
+	"diagnose":    runDiagnose,
+	"docker.load": runDockerLoad,
+	"docker.save": runDockerSave,
+	"net.pids":    runNetPIDs,
+	"proc.nohup":  runNohup,
 }
 
 // runDiagnose bridges the registry builtin to the diagnose package.

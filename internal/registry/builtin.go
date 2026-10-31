@@ -161,20 +161,26 @@ func Builtin() *Registry {
 			Variants: runtimeVariants("tag"),
 		},
 		{
-			ID:       "docker.save",
-			Group:    "docker",
-			Summary:  "把镜像导出为归档文件",
-			Action:   "等价 docker save；通常配合 -o 透传输出文件",
-			Usage:    "<镜像>",
+			ID:      "docker.save",
+			Group:   "docker",
+			Summary: "把镜像导出为 <镜像名>.tar",
+			Action: "等价 docker save <镜像> -o <镜像名>.tar：归档文件按镜像的仓库名与标签命名，" +
+				"标签的冒号改写为下划线（alpine:3.20 → alpine_3.20.tar，registry:5000/team/app:1.0 → registry_5000_team_app_1.0.tar）；" +
+				"传入镜像 ID 时先解析出它对应的镜像名称，再据此命名；未打标签的镜像直接报错。" +
+				"--platform 等选项原样透传给底层运行时",
+			Usage:    "<镜像名|镜像ID>",
 			MinArgs:  1,
-			Variants: runtimeVariants("save"),
+			Variants: runtimeBuiltinVariants("save"),
 		},
 		{
-			ID:       "docker.load",
-			Group:    "docker",
-			Summary:  "从归档文件导入镜像",
-			Action:   "等价 docker load；通常配合 -i 透传输入文件",
-			Variants: runtimeVariants("load"),
+			ID:      "docker.load",
+			Group:   "docker",
+			Summary: "从 <归档.tar> 导入镜像",
+			Action: "等价 docker load -i <归档.tar>：归档文件作为位置参数（对应原本的 docker load < xxx.tar），" +
+				"可一次给出多个；仍可用 -i/--input 指定，或传 - 表示从标准输入读取",
+			Usage:    "<归档.tar>...",
+			MinArgs:  1,
+			Variants: runtimeBuiltinVariants("load"),
 		},
 		{
 			ID:       "docker.cp",
@@ -275,7 +281,7 @@ func Builtin() *Registry {
 			ID:         "diagnose",
 			Group:      "diagnose",
 			Summary:    "诊断容器或 Pod 当前状态的根因",
-			Action:     "自动识别 Docker/Podman 容器或 Kubernetes Pod，采集状态、最近日志与事件，给出原因、依据与建议；只读，不修改任何对象。--kind 可强制来源，K8s 下 -n/--namespace 指定命名空间",
+			Action:     "自动识别 Docker 容器或 Kubernetes Pod，采集状态、最近日志与事件，给出原因、依据与建议；只读，不修改任何对象。--kind 可强制来源，K8s 下 -n/--namespace 指定命名空间",
 			Usage:      "<容器名或 Pod 名>",
 			MinArgs:    1,
 			Namespaced: true,
@@ -283,7 +289,7 @@ func Builtin() *Registry {
 				{
 					Match:   Match{OS: "linux"},
 					Builtin: "diagnose",
-					Note:    "Linux 内置诊断（docker/podman 与 kubectl 自动识别）",
+					Note:    "Linux 内置诊断（docker 与 kubectl 自动识别）",
 				},
 				{
 					Match:   Match{OS: "darwin"},
@@ -373,6 +379,35 @@ func Builtin() *Registry {
 			},
 		},
 		{
+			ID:      "proc.nohup",
+			Group:   "proc",
+			Summary: "在后台运行命令，输出写入日志（等价 nohup <命令> > output.log 2>&1 &）",
+			Action: "启动一个与当前终端脱离的命令并立即返回：标准输入接到空设备，" +
+				"标准输出与标准错误都追加写入日志文件（默认 <程序名>.out，可用 -o 指定），" +
+				"Unix 下进入新会话、无控制终端，Windows 下以 DETACHED_PROCESS 启动，关闭终端不会终止它。" +
+				"选项在命令之前解析，命令之后的参数（含 -i 之类）原样透传，不加 shell；" +
+				"命令自身的 -n/--dry-run 不会被 kopsc 截获；kopsc 自身的预览等选项写在命令之前或用 -- 分隔",
+			Usage:   "<命令> [参数...]",
+			MinArgs: 1,
+			Variants: []Variant{
+				{
+					Match:   Match{OS: "linux"},
+					Builtin: "proc.nohup",
+					Note:    "Linux 内置实现（setsid 新会话 + 日志追加）",
+				},
+				{
+					Match:   Match{OS: "darwin"},
+					Builtin: "proc.nohup",
+					Note:    "macOS 内置实现（setsid 新会话 + 日志追加）",
+				},
+				{
+					Match:   Match{OS: "windows"},
+					Builtin: "proc.nohup",
+					Note:    "Windows 内置实现（DETACHED_PROCESS + 日志追加）",
+				},
+			},
+		},
+		{
 			ID:      "pkg.refreshindex",
 			Group:   "pkg",
 			Summary: "刷新系统包管理器的软件源索引",
@@ -413,32 +448,42 @@ func Builtin() *Registry {
 	}}
 }
 
-// runtimeVariants builds the platform matrix for a container command. Linux
-// gets both podman and docker variants (resolution prefers podman when both
-// exist); macOS and Windows only have Docker Desktop.
-func runtimeVariants(args ...string) []Variant {
-	program := func(runtime string) string {
-		if runtime == "podman" {
-			return "podman"
+// runtimeBuiltinVariants builds the platform matrix for a container command
+// that kopsc implements itself. Builtin variants carry no argv; the builtin
+// learns the runtime's program name from Variant.Runtime instead.
+func runtimeBuiltinVariants(name string) []Variant {
+	makeVariant := func(osName, note string) Variant {
+		return Variant{
+			Match:   Match{OS: osName, Runtime: "docker"},
+			Builtin: "docker." + name,
+			Runtime: "docker",
+			Note:    note,
 		}
-		return "docker"
 	}
+	return []Variant{
+		makeVariant("linux", "Linux 上的 Docker 运行时，由 kopsc 内置实现"),
+		makeVariant("darwin", "macOS 上的 Docker Desktop 运行时，由 kopsc 内置实现"),
+		makeVariant("windows", "Windows 上的 Docker Desktop 运行时，由 kopsc 内置实现"),
+	}
+}
 
-	makeVariant := func(osName, runtime, note string) Variant {
+// runtimeVariants builds the platform matrix for a container command: docker
+// on every platform (Docker Desktop on macOS and Windows).
+func runtimeVariants(args ...string) []Variant {
+	makeVariant := func(osName, note string) Variant {
 		argv := make([]string, 0, 1+len(args))
-		argv = append(argv, program(runtime))
+		argv = append(argv, "docker")
 		argv = append(argv, args...)
 		return Variant{
-			Match: Match{OS: osName, Runtime: runtime},
+			Match: Match{OS: osName, Runtime: "docker"},
 			Argv:  argv,
 			Note:  note,
 		}
 	}
 
 	return []Variant{
-		makeVariant("linux", "podman", "Linux 上的 Podman 运行时"),
-		makeVariant("linux", "docker", "Linux 上的 Docker 运行时"),
-		makeVariant("darwin", "docker", "macOS 上的 Docker Desktop 运行时"),
-		makeVariant("windows", "docker", "Windows 上的 Docker Desktop 运行时"),
+		makeVariant("linux", "Linux 上的 Docker 运行时"),
+		makeVariant("darwin", "macOS 上的 Docker Desktop 运行时"),
+		makeVariant("windows", "Windows 上的 Docker Desktop 运行时"),
 	}
 }

@@ -188,18 +188,16 @@ func Evaluate(m registry.Match, info platform.Info) (score int, matched bool, re
 }
 
 // runtimeRank orders runtimes by preference when two variants are otherwise
-// equally specific: podman beats docker because it is the rootless default on
-// CentOS-family hosts, and a variant with no runtime constraint ranks last.
+// equally specific: docker ranks first and a variant with no runtime
+// constraint ranks last.
 func runtimeRank(runtime string) int {
 	switch strings.ToLower(runtime) {
-	case "podman":
-		return 0
 	case "docker":
-		return 1
+		return 0
 	case "":
-		return 3
-	default:
 		return 2
+	default:
+		return 1
 	}
 }
 

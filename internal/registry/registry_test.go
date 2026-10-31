@@ -25,7 +25,7 @@ func TestBuiltinIDsStable(t *testing.T) {
 		"docker.prunebuilder", "docker.prunevolumes", "docker.clearall",
 		"docker.compose.up", "docker.compose.down", "docker.compose.ps", "docker.compose.logs",
 		"diagnose",
-		"disk.usage", "net.pids", "net.ports", "pkg.refreshindex",
+		"disk.usage", "net.pids", "net.ports", "proc.nohup", "pkg.refreshindex",
 	}
 	if got := reg.IDs(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("IDs() =\n%v\nwant\n%v", got, want)
@@ -38,12 +38,12 @@ func TestBuiltinClearsafeIsSafe(t *testing.T) {
 	if !ok {
 		t.Fatal("docker.clearsafe not found")
 	}
-	if len(cmd.Variants) < 4 {
+	if len(cmd.Variants) < 3 {
 		t.Fatalf("expected a variant per platform, got %d", len(cmd.Variants))
 	}
 
 	for _, variant := range cmd.Variants {
-		if len(variant.Argv) == 0 || (variant.Argv[0] != "docker" && variant.Argv[0] != "podman") {
+		if len(variant.Argv) == 0 || variant.Argv[0] != "docker" {
 			t.Errorf("unexpected program %v", variant.Argv)
 		}
 		if strings.Join(variant.Argv, " ") != variant.Argv[0]+" system prune -f" {
@@ -182,6 +182,32 @@ func TestDiskUsageIsBuiltinEverywhere(t *testing.T) {
 	}
 }
 
+func TestProcNohupIsBuiltinEverywhere(t *testing.T) {
+	reg := Builtin()
+	cmd, ok := reg.Lookup("proc.nohup")
+	if !ok {
+		t.Fatal("proc.nohup not found")
+	}
+	if cmd.RequiresYes {
+		t.Error("proc.nohup is not destructive and must not require --yes")
+	}
+	if cmd.MinArgs != 1 || cmd.Usage == "" {
+		t.Errorf("proc.nohup must require the command to run, got MinArgs=%d Usage=%q", cmd.MinArgs, cmd.Usage)
+	}
+	seen := map[string]bool{}
+	for _, variant := range cmd.Variants {
+		if variant.Builtin != "proc.nohup" || len(variant.Argv) != 0 || variant.Shell {
+			t.Errorf("variant for %s must be the proc.nohup builtin, got %+v", variant.Match.OS, variant)
+		}
+		seen[variant.Match.OS] = true
+	}
+	for _, osName := range []string{"linux", "darwin", "windows"} {
+		if !seen[osName] {
+			t.Errorf("proc.nohup lacks a %s variant", osName)
+		}
+	}
+}
+
 func TestDockerCommandsWellFormed(t *testing.T) {
 	reg := Builtin()
 	destructive := map[string]bool{
@@ -200,7 +226,13 @@ func TestDockerCommandsWellFormed(t *testing.T) {
 		"docker.pull":    1,
 		"docker.tag":     2,
 		"docker.save":    1,
+		"docker.load":    1,
 		"docker.cp":      2,
+	}
+	// Built from kopsc's own implementation rather than a fixed argv.
+	builtin := map[string]string{
+		"docker.save": "docker.save",
+		"docker.load": "docker.load",
 	}
 
 	for i := range reg.Commands {
@@ -219,24 +251,36 @@ func TestDockerCommandsWellFormed(t *testing.T) {
 			t.Errorf("%s: missing Usage for MinArgs=%d", cmd.ID, cmd.MinArgs)
 		}
 
-		var podman, docker int
+		platforms := map[string]bool{}
 		for _, v := range cmd.Variants {
+			if want, ok := builtin[cmd.ID]; ok {
+				if v.Builtin != want || len(v.Argv) != 0 {
+					t.Errorf("%s: builtin variant = %q with argv %v, want builtin %q",
+						cmd.ID, v.Builtin, v.Argv, want)
+					continue
+				}
+				if v.Runtime != v.Match.Runtime || v.Runtime != "docker" {
+					t.Errorf("%s: variant runtime %q / match %q, want docker", cmd.ID, v.Runtime, v.Match.Runtime)
+				}
+				platforms[v.Match.OS] = true
+				continue
+			}
 			if len(v.Argv) == 0 {
 				t.Errorf("%s: docker command must have an argv variant", cmd.ID)
 				continue
 			}
-			switch v.Argv[0] {
-			case "podman":
-				podman++
-			case "docker":
-				docker++
+			if v.Argv[0] != "docker" {
+				t.Errorf("%s: unexpected program %q", cmd.ID, v.Argv[0])
 			}
-			if v.Match.Runtime != v.Argv[0] {
-				t.Errorf("%s: runtime %q does not match program %q", cmd.ID, v.Match.Runtime, v.Argv[0])
+			if v.Match.Runtime != "docker" {
+				t.Errorf("%s: runtime %q, want docker", cmd.ID, v.Match.Runtime)
 			}
+			platforms[v.Match.OS] = true
 		}
-		if podman != 1 || docker != 3 {
-			t.Errorf("%s: variants = %d podman / %d docker, want 1/3", cmd.ID, podman, docker)
+		for _, osName := range []string{"linux", "darwin", "windows"} {
+			if !platforms[osName] {
+				t.Errorf("%s: missing %s variant", cmd.ID, osName)
+			}
 		}
 	}
 }

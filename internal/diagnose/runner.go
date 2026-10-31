@@ -1,5 +1,5 @@
 // Package diagnose explains why a container or Pod is in its current state.
-// It knows how to inspect Docker/Podman containers and Kubernetes Pods, and
+// It knows how to inspect Docker containers and Kubernetes Pods, and
 // falls back to a built-in implementation so the output is identical on every
 // platform.
 package diagnose

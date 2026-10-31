@@ -21,7 +21,7 @@ type Info struct {
 	Arch       string   // runtime.GOARCH, e.g. "amd64", "arm64"
 	Distro     string   // lower-case os-release ID, empty when unknown
 	DistroLike []string // lower-case os-release ID_LIKE entries
-	Runtimes   []string // container runtimes found on PATH, e.g. "docker", "podman"
+	Runtimes   []string // container runtimes found on PATH, e.g. "docker"
 }
 
 // Probe gathers Info. Its dependencies are injectable so detection can be
@@ -41,7 +41,7 @@ func System() Probe {
 		GOARCH:            runtime.GOARCH,
 		ReadFile:          os.ReadFile,
 		LookPath:          exec.LookPath,
-		RuntimeCandidates: []string{"docker", "podman"},
+		RuntimeCandidates: []string{"docker"},
 	}
 }
 
@@ -59,7 +59,7 @@ func (p Probe) Detect() Info {
 
 	candidates := p.RuntimeCandidates
 	if candidates == nil {
-		candidates = []string{"docker", "podman"}
+		candidates = []string{"docker"}
 	}
 	if p.LookPath != nil {
 		for _, name := range candidates {

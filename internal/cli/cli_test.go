@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -46,17 +47,14 @@ func TestLeafDryRun(t *testing.T) {
 	}
 }
 
-func TestLeafDryRunPrefersPodman(t *testing.T) {
-	app, stdout, _ := testApp(centos("docker", "podman"))
+func TestLeafDryRunPicksDockerVariant(t *testing.T) {
+	app, stdout, _ := testApp(centos("docker"))
 
 	if code := app.Execute([]string{"docker", "clearsafe", "--dry-run"}); code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
-	if !strings.Contains(stdout.String(), "podman system prune -f") {
-		t.Errorf("expected podman variant:\n%s", stdout.String())
-	}
-	if strings.Contains(stdout.String(), "docker system prune -f") {
-		t.Errorf("docker variant should not be chosen when podman is present:\n%s", stdout.String())
+	if !strings.Contains(stdout.String(), "docker system prune -f") {
+		t.Errorf("expected the docker variant:\n%s", stdout.String())
 	}
 }
 
@@ -127,7 +125,7 @@ func TestListMarksUnavailable(t *testing.T) {
 }
 
 func TestExplain(t *testing.T) {
-	app, stdout, _ := testApp(centos("docker", "podman"))
+	app, stdout, _ := testApp(centos("docker"))
 
 	if code := app.Execute([]string{"explain", "docker.clearsafe"}); code != 0 {
 		t.Fatalf("exit code = %d", code)
@@ -140,7 +138,7 @@ func TestExplain(t *testing.T) {
 		"候选:",
 		"✓",
 		"✗",
-		"podman system prune -f",
+		"docker system prune -f",
 		"distro=centos",
 	} {
 		if !strings.Contains(out, want) {
@@ -176,13 +174,13 @@ func TestExplainUnknownCommand(t *testing.T) {
 }
 
 func TestPlatform(t *testing.T) {
-	app, stdout, _ := testApp(centos("docker", "podman"))
+	app, stdout, _ := testApp(centos("docker"))
 
 	if code := app.Execute([]string{"platform"}); code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
 	out := stdout.String()
-	for _, want := range []string{"linux", "amd64", "centos", "rhel fedora", "docker, podman"} {
+	for _, want := range []string{"linux", "amd64", "centos", "rhel fedora", "docker"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("platform output missing %q:\n%s", want, out)
 		}
@@ -506,5 +504,130 @@ func TestExecutionPreservesExitCode(t *testing.T) {
 
 	if code := app.Execute([]string{"demo", "fail"}); code != 9 {
 		t.Fatalf("exit code = %d, want 9", code)
+	}
+}
+
+func TestProcNohupThroughCLI(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "run.log")
+
+	app, stdout, stderr := testApp(centos("docker"))
+	// A command-local -n must reach the child: kopsc's leaf parser disables
+	// flag parsing for this command.
+	if code := app.Execute([]string{"proc", "nohup", "-o", logPath, "-w", "sh", "-c", "echo out; echo err >&2"}); code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "已在后台启动") || !strings.Contains(out, logPath) {
+		t.Errorf("launch summary missing:\n%s", out)
+	}
+	if !strings.Contains(out, "out") || !strings.Contains(out, "err") {
+		t.Errorf("--wait did not relay output:\n%s", out)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("log not written: %v", err)
+	}
+	if !strings.Contains(string(data), "out") || !strings.Contains(string(data), "err") {
+		t.Errorf("log = %q", data)
+	}
+}
+
+func TestProcNohupDryRunDoesNotLaunch(t *testing.T) {
+	app, stdout, stderr := testApp(centos("docker"))
+	if code := app.Execute([]string{"proc", "nohup", "--dry-run", "sh", "-c", "echo hi"}); code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "[dry-run]") {
+		t.Errorf("dry-run output missing:\n%s", stdout.String())
+	}
+}
+
+func TestProcNohupRequiresCommand(t *testing.T) {
+	app, _, stderr := testApp(centos("docker"))
+	if code := app.Execute([]string{"proc", "nohup", "-q"}); code == 0 {
+		t.Fatal("expected a non-zero exit code without a command")
+	}
+	if !strings.Contains(stderr.String(), "缺少参数") {
+		t.Errorf("stderr = %q", stderr.String())
+	}
+}
+
+func TestProcNohupKeepsCommandLocalDryRun(t *testing.T) {
+	app, stdout, stderr := testApp(centos("docker"))
+	// -n after the program belongs to the program, so kopsc must actually run.
+	if code := app.Execute([]string{"proc", "nohup", "-q", "-w", "sh", "-c", "echo ran"}); code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "[dry-run]") {
+		t.Errorf("command-local arguments were intercepted as kopsc options:\n%s", stdout.String())
+	}
+}
+
+// fakeRuntimeScript installs a fake docker on PATH that answers
+// `images --format` with one image and records every invocation in calls.log.
+func fakeRuntimeScript(t *testing.T, images string) string {
+	t.Helper()
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "calls.log")
+	script := "#!/bin/sh\n" +
+		"echo \"$*\" >> " + logPath + "\n" +
+		"case \"$1\" in\n" +
+		"  images) cat <<'EOT'\n" + images + "\nEOT\n" +
+		"    ;;\n" +
+		"esac\n"
+	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return logPath
+}
+
+func TestDockerSaveThroughCLINamesArchiveAfterImageID(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake runtime is a shell script")
+	}
+	logPath := fakeRuntimeScript(t, "IMAGE ID\tREPOSITORY\tTAG\tDIGEST\naaaa11112222\talpine\t3.20\t")
+
+	app, stdout, stderr := testApp(centos("docker"))
+	if code := app.Execute([]string{"docker", "save", "aaaa11112222"}); code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s stdout=%s", code, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "alpine_3.20.tar") {
+		t.Errorf("summary missing archive name:\n%s", stdout.String())
+	}
+	data, _ := os.ReadFile(logPath)
+	if !strings.Contains(string(data), "save -o alpine_3.20.tar aaaa11112222") {
+		t.Errorf("calls = %q", data)
+	}
+}
+
+func TestDockerLoadThroughCLITakesArchive(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake runtime is a shell script")
+	}
+	archive := filepath.Join(t.TempDir(), "alpine_3.20.tar")
+	if err := os.WriteFile(archive, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	logPath := fakeRuntimeScript(t, "")
+
+	app, _, stderr := testApp(centos("docker"))
+	if code := app.Execute([]string{"docker", "load", archive}); code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	data, _ := os.ReadFile(logPath)
+	if !strings.Contains(string(data), "load -i "+archive) {
+		t.Errorf("calls = %q", data)
+	}
+}
+
+func TestDockerLoadThroughCLIRequiresArchive(t *testing.T) {
+	app, _, stderr := testApp(centos("docker"))
+	if code := app.Execute([]string{"docker", "load"}); code == 0 {
+		t.Fatal("expected a non-zero exit code without an archive")
+	}
+	if !strings.Contains(stderr.String(), "缺少参数") {
+		t.Errorf("stderr = %q", stderr.String())
 	}
 }

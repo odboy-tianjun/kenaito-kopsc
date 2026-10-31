@@ -78,18 +78,6 @@ func TestDetect(t *testing.T) {
 			},
 		},
 		{
-			name:      "linux centos with podman and docker",
-			goos:      "linux",
-			goarch:    "arm64",
-			osRelease: centosStream9,
-			present:   []string{"docker", "podman"},
-			want: Info{
-				OS: "linux", Arch: "arm64",
-				Distro: "centos", DistroLike: []string{"rhel", "fedora"},
-				Runtimes: []string{"docker", "podman"},
-			},
-		},
-		{
 			name:         "linux without os-release",
 			goos:         "linux",
 			goarch:       "amd64",
@@ -133,7 +121,7 @@ func TestDetect(t *testing.T) {
 					}
 					return "", errors.New("not found")
 				},
-				RuntimeCandidates: []string{"docker", "podman"},
+				RuntimeCandidates: []string{"docker"},
 			}
 
 			got := probe.Detect()

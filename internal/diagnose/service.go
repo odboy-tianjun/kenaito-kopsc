@@ -53,7 +53,7 @@ func (s *Service) Run(ctx context.Context, args []string) error {
 
 type source struct {
 	kind      string // "docker" or "k8s"
-	program   string // docker or podman
+	program   string // docker
 	namespace string
 	context   string
 }
@@ -128,17 +128,15 @@ func (s *Service) resolve(ctx context.Context, target string, opts Options) (sou
 }
 
 func (s *Service) dockerProgram() (string, error) {
-	for _, name := range []string{"docker", "podman"} {
-		if _, err := s.runner.LookPath(name); err == nil {
-			return name, nil
-		}
+	if _, err := s.runner.LookPath("docker"); err == nil {
+		return "docker", nil
 	}
 	for _, name := range s.info.Runtimes {
-		if name == "docker" || name == "podman" {
-			return name, nil
+		if name == "docker" {
+			return "docker", nil
 		}
 	}
-	return "", fmt.Errorf("未找到 docker 或 podman")
+	return "", fmt.Errorf("未找到 docker")
 }
 
 // run executes a command with a per-command timeout.

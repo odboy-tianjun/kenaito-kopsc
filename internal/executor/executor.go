@@ -111,6 +111,7 @@ func (p Plan) Run(ctx context.Context, opts Options) error {
 			Stdout: opts.Stdout,
 			Stderr: opts.Stderr,
 			Info:   p.Result.Info,
+			Plan:   p,
 		})
 	}
 

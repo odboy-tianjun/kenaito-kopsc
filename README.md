@@ -12,8 +12,8 @@ $ kopsc docker clearsafe --dry-run
 依据:   匹配 os=linux, runtime=docker (+2)
 ```
 
-在 CentOS 上它执行 `docker system prune -f`；在装有 Podman 的 CentOS 上自动改走
-`podman system prune -f`；在 macOS / Windows 上同样有各自的变体。你只记住一个意图。
+在 Linux 上它执行 `docker system prune -f`，macOS / Windows 上使用 Docker Desktop 的同一命令。
+你只记住一个意图，kopsc 负责挑出当前平台可用的那条命令。
 
 ## 构建
 
@@ -55,6 +55,8 @@ kopsc docker logs -f web          # 查看日志（容器名必填，选项可�
 kopsc docker exec -it web sh      # 进入容器
 kopsc docker compose up           # 启动 Compose 服务
 kopsc docker clearall --yes       # 深度清理（破坏性命令，必须显式 --yes）
+kopsc docker save alpine:3.20     # 自动保存为 alpine_3.20.tar（传镜像 ID 会先解析出名称）
+kopsc docker load alpine_3.20.tar # 等价 docker load < alpine_3.20.tar
 
 kopsc docker clearsafe            # 直接执行当前平台对应的清理命令
 kopsc docker clearsafe --dry-run  # 只打印将执行的命令与判定依据
@@ -72,6 +74,7 @@ kopsc net ports                      # 列出监听中的端口
 kopsc disk usage /var                # 磁盘占用排行（du -x --max-depth=1 -h | sort -hr 的跨平台版）
 kopsc disk usage --path /var         # 同上，用命名参数指定路径
 kopsc disk usage /var --dry-run      # 预览（内置命令同样支持）
+kopsc proc nohup ./server            # 后台运行命令，输出写日志（等价 nohup ./server > server.out 2>&1 &）
 
 kopsc list                        # 全部命令及当前平台可用性
 kopsc explain docker.clearsafe    # 匹配过程、全部候选及各自被选中/拒绝的原因
@@ -129,19 +132,39 @@ $ kopsc disk usage /var
 | 清理 | `clearsafe`、`pruneimages`、`prunecontainers`、`prunenets`、`prunebuilder`、`prunevolumes`、`clearall` |
 | Compose | `compose up`、`compose down`、`compose ps`、`compose logs` |
 
-- 所有 Docker 命令在 Linux 上同时提供 `docker` 与 `podman` 变体，且 podman 优先；
-  macOS / Windows 使用 Docker Desktop。
-- `logs`、`inspect`、`start`、`stop`、`restart`、`rm`、`rmi`、`exec`、`pull`、`tag`、`save`、`cp`
+- 所有 Docker 命令在三个平台都调用 `docker`（macOS / Windows 上即 Docker Desktop）。
+- `logs`、`inspect`、`start`、`stop`、`restart`、`rm`、`rmi`、`exec`、`pull`、`tag`、`save`、`load`、`cp`
   需要位置参数，缺失时直接报错并给出用法。
 - 破坏性命令只有 `clearall`（`system prune -a -f`）与 `prunevolumes`（`volume prune -f`）：
   未带 `--yes` 时只打印影响范围与将执行的命令，并以退出码 2 结束。
-- `docker compose` 对应 Compose v2；`podman compose` 需要 podman 4+。
+- `docker compose` 对应 Compose v2。
 - `docker clearsafe` 的安全契约：只加 `-f` 以便无人值守执行，**不**加 `-a`（不清理全部未使用镜像），
   **不**加 `--volumes`（不删除卷），仅清理停止的容器、未使用的网络与悬空镜像。
 
+### 镜像导出与导入（docker save / docker load）
+
+`kopsc docker save <镜像名|镜像ID>` 等价于 `docker save <镜像> -o <镜像名>.tar`，归档文件自动命名：
+
+```bash
+kopsc docker save alpine:3.20                      # → alpine_3.20.tar
+kopsc docker save 9c6f07244728                     # 按 ID 查到 alpine:3.20，同样保存为 alpine_3.20.tar
+kopsc docker save sha256:9c6f07244728 --platform linux/arm64
+kopsc docker load alpine_3.20.tar                  # 等价 docker load < alpine_3.20.tar
+kopsc docker load a.tar b.tar                      # 一次导入多个
+```
+
+- 文件名取自镜像的**仓库名 + 标签**：标签前的冒号、路径分隔符 `/` 等无法用于文件名的字符改写为下划线，
+  例如 `registry.example.com:5000/team/app:1.0` → `registry.example.com_5000_team_app_1.0.tar`；
+  未打标签的镜像没有名称可依据，直接报错并提示先 `docker tag`。
+- 传入镜像 ID（可省略 `sha256:` 前缀，也可用唯一前缀）时，先向运行时查询它对应的镜像名称，再据此命名。
+  同一 ID 有多个名称时要求直接指定名称，避免文件名含糊。
+- `--platform` 等运行时选项原样透传给底层运行时。
+- `docker load` 的归档文件是**位置参数**（对应原来的 `docker load < xxx.tar`），可一次给出多个；
+  `-i/--input` 仍然可用，传 `-` 仍表示从标准输入读取。
+
 ### 容器/Pod 诊断（diagnose）
 
-`kopsc diagnose <名称>` 自动判断目标是 Docker/Podman 容器还是 Kubernetes Pod，输出状态、根因、依据、建议，并附最近日志与事件。只读，不修改任何对象。
+`kopsc diagnose <名称>` 自动判断目标是 Docker 容器还是 Kubernetes Pod，输出状态、根因、依据、建议，并附最近日志与事件。只读，不修改任何对象。
 
 ```text
 目标:   web
@@ -206,6 +229,35 @@ kopsc net pids 8080 --dry-run
 | `disk.usage` | 目录占用排行（等价 `du -x --max-depth=1 -h <路径> \| sort -hr`） | Linux/macOS/Windows 均使用 kopsc 内置实现，保证输出一致 |
 | `net.ports` | 列出监听中的端口 | Linux `ss -tulnp`、macOS `lsof -iTCP -sTCP:LISTEN -nP`、Windows `netstat -ano` |
 | `pkg.refreshindex` | 刷新包管理器索引 | centos `dnf makecache`、ID_LIKE rhel/fedora `dnf makecache`、ID_LIKE debian/ubuntu `apt-get update`、alpine `apk update`、macOS `brew update`、Windows `winget source update` |
+| `proc.nohup` | 后台运行命令，输出写入日志（等价 `nohup <命令> > output.log 2>&1 &`） | Linux/macOS 内置实现（新会话 + 日志追加）、Windows 内置实现（`DETACHED_PROCESS` + 日志追加） |
+
+### 后台运行（proc.nohup）
+
+`kopsc proc nohup <命令> [参数...]` 等价于 `nohup <命令> > output.log 2>&1 &`：启动命令后立刻返回，关闭终端不会终止它。
+
+```bash
+kopsc proc nohup ./server -port 8080                    # 日志写到 ./server.out（同 nohup.out）
+kopsc proc nohup -o /var/log/server.log ./server        # 指定日志
+kopsc proc nohup -C /srv/app --env=APP_ENV=prod ./run.sh  # 指定工作目录与环境变量
+kopsc proc nohup -w ./migrate.sh                        # 等它结束，并回显日志、透传退出码
+kopsc proc nohup --dry-run ./server                     # 只打印判定依据
+```
+
+- 标准输入接到空设备；标准输出与标准错误**都追加**写入日志文件（`>>` 语义），并自动创建日志目录。
+- Unix 下子进程进入新会话、无控制终端（相当于 `setsid`），Windows 下以 `DETACHED_PROCESS` 启动。
+- 选项只在**命令之前**解析：`kopsc proc nohup ffmpeg -i in.mp4` 中的 `-i` 原样给 ffmpeg，
+  不会被 kopsc 截获（因此命令自身的 `-n`/`--dry-run` 不会触发 kopsc 的预览）。
+  需要预览时把 `--dry-run` 写在命令之前、或用 `--` 分隔。
+- 不经过 shell，`>`、`|`、`&&` 需要显式写 shell：`kopsc proc nohup sh -c 'a | b > c'`。
+
+| 选项 | 说明 |
+| --- | --- |
+| `-o`, `--out`, `--output` | 日志文件，默认 `<程序名>.out` |
+| `-C`, `--dir`, `--chdir` | 子进程工作目录（相对日志路径也基于它），默认当前目录 |
+| `-E`, `--env NAME=VALUE` | 追加环境变量，可重复 |
+| `-q`, `--quiet` | 不打印启动摘要（PID、日志路径） |
+| `-w`, `--wait` | 前台等待命令退出，回显其写入的日志内容并透传退出码 |
+| `--detach` / `--no-detach` | 默认脱离会话；`--no-detach` 保留当前会话（类似只加 `&`） |
 
 ## 平台识别
 
@@ -213,7 +265,7 @@ kopsc net pids 8080 --dry-run
 
 - OS/ARCH：编译目标 `runtime.GOOS` / `runtime.GOARCH`
 - Linux 发行版：`/etc/os-release` 的 `ID` 与 `ID_LIKE`（文件缺失时视为未知，不报错）
-- 容器运行时：`exec.LookPath` 探测 `docker`、`podman`
+- 容器运行时：`exec.LookPath` 探测 `docker`
 
 ## 匹配规则
 
@@ -222,17 +274,16 @@ kopsc net pids 8080 --dry-run
 
 1. 变体声明的每一个约束都必须满足，否则该变体被排除。
 2. 满足的变体按特异性打分：`Distro` 精确命中 +3，`ID_LIKE` 命中 +2，`Runtime` 命中 +2，无约束的通用变体 0 分。
-3. 取最高分。并列时先按运行时偏好（podman 优先于 docker），再按声明约束的数量（更具体者优先）。
+3. 取最高分。并列时先按运行时偏好（有运行时约束者优先，且 `docker` 在前），再按声明约束的数量（更具体者优先）。
 4. 仍并列则报歧义错误；无任何变体匹配则报无匹配错误，并提示 `kopsc explain <命令>`。
 5. 取 `--dry-run` 或 `explain` 可看到每个候选的得分与被拒原因。
 
-例如 CentOS 上同时装了 docker 与 podman：
+例如 CentOS 上执行 `kopsc explain docker.clearsafe`：
 
 ```text
-✓ #0 2 分  匹配 os=linux, runtime=podman (+2) -> podman system prune -f
-✓ #1 2 分  匹配 os=linux, runtime=docker (+2) -> docker system prune -f
-✗ #2 0 分  os=darwin 不匹配（当前 linux）      -> docker system prune -f
-✗ #3 0 分  os=windows 不匹配（当前 linux）     -> docker system prune -f
+✓ #0 2 分  匹配 os=linux, runtime=docker (+2) -> docker system prune -f
+✗ #1 0 分  os=darwin 不匹配（当前 linux）      -> docker system prune -f
+✗ #2 0 分  os=windows 不匹配（当前 linux）     -> docker system prune -f
 ```
 
 ## 新增命令或平台变体
@@ -271,7 +322,7 @@ internal/platform    环境探测（可注入，便于测试）
 internal/registry    命令模型、校验、内置注册表
 internal/resolve     变体打分与选择
 internal/executor    进程执行、内置动作、dry-run、退出码透传
-internal/diagnose    Docker/Podman 与 Kubernetes 的状态根因诊断（内置动作）
+internal/diagnose    Docker 与 Kubernetes 的状态根因诊断（内置动作）
 internal/cli         cobra 命令树与辅助命令
 scripts/build        跨平台构建脚本（go run ./scripts/build）
 ```
