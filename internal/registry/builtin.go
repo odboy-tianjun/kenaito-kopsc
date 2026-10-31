@@ -326,16 +326,40 @@ func Builtin() *Registry {
 			},
 		},
 		{
+			ID:      "net.pids",
+			Group:   "net",
+			Summary: "查找占用指定端口的进程 PID",
+			Action:  "等价 lsof -ti:<端口>：每行输出一个占用该端口的进程 PID。Linux/macOS 调用 lsof，Windows 解析 netstat -ano；无进程占用时无输出",
+			Usage:   "<端口>",
+			MinArgs: 1,
+			Variants: []Variant{
+				{
+					Match:   Match{OS: "linux"},
+					Builtin: "net.pids",
+					Note:    "Linux 使用 lsof -ti",
+				},
+				{
+					Match:   Match{OS: "darwin"},
+					Builtin: "net.pids",
+					Note:    "macOS 使用 lsof -ti",
+				},
+				{
+					Match:   Match{OS: "windows"},
+					Builtin: "net.pids",
+					Note:    "Windows 解析 netstat -ano",
+				},
+			},
+		},
+		{
 			ID:      "net.ports",
 			Group:   "net",
 			Summary: "列出本机正在监听的 TCP/UDP 端口",
 			Action:  "以只读方式列出监听中的套接字及持有进程",
-			Variants: []Variant{
-				{
-					Match: Match{OS: "linux"},
-					Argv:  []string{"ss", "-tulnp"},
-					Note:  "Linux 使用 iproute2 的 ss",
-				},
+			Variants: []Variant{{
+				Match: Match{OS: "linux"},
+				Argv:  []string{"ss", "-tulnp"},
+				Note:  "Linux 使用 iproute2 的 ss",
+			},
 				{
 					Match: Match{OS: "darwin"},
 					Argv:  []string{"lsof", "-iTCP", "-sTCP:LISTEN", "-nP"},

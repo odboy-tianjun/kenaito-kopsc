@@ -8,8 +8,8 @@ $ kopsc docker clearsafe --dry-run
 将执行: docker system prune -f
 平台:   linux/amd64, distro=centos, runtimes=docker
 方式:   直接执行
-命中:   变体 #1（5 分）CentOS 上的 Docker 运行时
-依据:   匹配 os=linux, distro=centos (+3), runtime=docker (+2)
+命中:   变体 #1（2 分）Linux 上的 Docker 运行时
+依据:   匹配 os=linux, runtime=docker (+2)
 ```
 
 在 CentOS 上它执行 `docker system prune -f`；在装有 Podman 的 CentOS 上自动改走
@@ -66,6 +66,9 @@ kopsc diagnose api-0 -n prod       # K8s：本命令里 -n 表示 namespace
 kopsc diagnose api-0 --kind k8s --context staging
 kopsc diagnose web --lines 200 --no-events
 
+kopsc net pids 8080                  # 等价 lsof -ti:8080，输出占用端口的 PID
+kopsc net ports                      # 列出监听中的端口
+
 kopsc disk usage /var                # 磁盘占用排行（du -x --max-depth=1 -h | sort -hr 的跨平台版）
 kopsc disk usage --path /var         # 同上，用命名参数指定路径
 kopsc disk usage /var --dry-run      # 预览（内置命令同样支持）
@@ -103,7 +106,7 @@ $ kopsc disk usage /var
 
 | 参数 | 行为 |
 | --- | --- |
-| `-n`, `--dry-run`, `--dry-run=true` | 置为预览模式，不执行 |
+| `-n`, `--dry-run`, `--dry-run=true` | 置为预览模式，不执行。**例外**：`kopsc diagnose` 中 `-n` 表示 namespace，预览请用 `--dry-run` |
 | `--dry-run=false` | 关闭预览模式 |
 | `-y`, `--yes` | 确认执行破坏性命令；未提供时只打印影响范围并以退出码 2 结束 |
 | `-h`, `--help` | 打印该命令的帮助 |
@@ -172,11 +175,34 @@ $ kopsc disk usage /var
 Kubernetes 的 CrashLoopBackOff、ImagePullBackOff/ErrImagePull、CreateContainerConfigError、OOMKilled、
 Pending（结合 FailedScheduling/FailedMount 事件）、Evicted 等。
 
+### 端口占用查询（net.pids）
+
+`kopsc net pids <端口>` 等价 `lsof -ti:<端口>`：输出占用该端口的进程 PID，每行一个、升序、去重；没有进程占用时无输出并正常退出。
+
+```bash
+kopsc net pids 8080
+kopsc net pids --port 8080
+kopsc net pids 8080 --dry-run
+```
+
+底层按平台自动选择，但对外的命令与输出保持一致：
+
+| 平台 | 依次尝试的底层来源 |
+| --- | --- |
+| Linux | `lsof -ti:<port>` → `ss -H -t -u -n -p`（解析 `pid=`） → 读 `/proc/net/*` 与 `/proc/*/fd`（纯内置，零外部依赖） |
+| macOS | `lsof -ti:<port>`（系统自带，无 `/proc` 回退） |
+| Windows | `netstat -ano`（解析本地地址与 PID） |
+
+- 端口必须是 1–65535；非法端口直接报错，不执行任何外部命令。
+- `lsof` 无匹配时退出码为 1 且无输出，kopsc 视为“没有进程占用”，返回 0。
+- 只读命令，不需要 `--yes`。
+
 ### 其它
 
 | 命令 | 说明 | 平台变体 |
 | --- | --- | --- |
 | `diagnose` | 容器/Pod 状态根因诊断（自动识别 Docker 与 Kubernetes） | Linux/macOS/Windows 均使用 kopsc 内置实现 |
+| `net.pids` | 查找占用指定端口的进程 PID（等价 `lsof -ti:<端口>`） | Linux `lsof` → `ss` → `/proc`；macOS `lsof`；Windows `netstat -ano`。三平台命令与输出一致（PID 升序、每行一个） |
 | `disk.usage` | 目录占用排行（等价 `du -x --max-depth=1 -h <路径> \| sort -hr`） | Linux/macOS/Windows 均使用 kopsc 内置实现，保证输出一致 |
 | `net.ports` | 列出监听中的端口 | Linux `ss -tulnp`、macOS `lsof -iTCP -sTCP:LISTEN -nP`、Windows `netstat -ano` |
 | `pkg.refreshindex` | 刷新包管理器索引 | centos `dnf makecache`、ID_LIKE rhel/fedora `dnf makecache`、ID_LIKE debian/ubuntu `apt-get update`、alpine `apk update`、macOS `brew update`、Windows `winget source update` |
@@ -203,10 +229,10 @@ Pending（结合 FailedScheduling/FailedMount 事件）、Evicted 等。
 例如 CentOS 上同时装了 docker 与 podman：
 
 ```text
-✓ #0 5 分  匹配 os=linux, distro=centos (+3), runtime=podman (+2) -> podman system prune -f
-✓ #1 5 分  匹配 os=linux, distro=centos (+3), runtime=docker (+2)  -> docker system prune -f
-✓ #2 2 分  匹配 os=linux, runtime=podman (+2)                      -> podman system prune -f
-✗ #4 0 分  os=darwin 不匹配（当前 linux）                           -> docker system prune -f
+✓ #0 2 分  匹配 os=linux, runtime=podman (+2) -> podman system prune -f
+✓ #1 2 分  匹配 os=linux, runtime=docker (+2) -> docker system prune -f
+✗ #2 0 分  os=darwin 不匹配（当前 linux）      -> docker system prune -f
+✗ #3 0 分  os=windows 不匹配（当前 linux）     -> docker system prune -f
 ```
 
 ## 新增命令或平台变体
@@ -244,7 +270,8 @@ cmd/kopsc            入口，注入版本号
 internal/platform    环境探测（可注入，便于测试）
 internal/registry    命令模型、校验、内置注册表
 internal/resolve     变体打分与选择
-internal/executor    进程执行、dry-run、退出码透传
+internal/executor    进程执行、内置动作、dry-run、退出码透传
+internal/diagnose    Docker/Podman 与 Kubernetes 的状态根因诊断（内置动作）
 internal/cli         cobra 命令树与辅助命令
 scripts/build        跨平台构建脚本（go run ./scripts/build）
 ```

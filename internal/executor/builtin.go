@@ -24,6 +24,7 @@ type Builtin func(ctx context.Context, req BuiltinRequest) error
 var builtins = map[string]Builtin{
 	"disk.usage": runDiskUsage,
 	"diagnose":   runDiagnose,
+	"net.pids":   runNetPIDs,
 }
 
 // runDiagnose bridges the registry builtin to the diagnose package.

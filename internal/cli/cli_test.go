@@ -460,6 +460,29 @@ func TestDiagnoseRequiresTarget(t *testing.T) {
 	}
 }
 
+func TestNetPidsDryRun(t *testing.T) {
+	app, stdout, stderr := testApp(centos("docker"))
+
+	if code := app.Execute([]string{"net", "pids", "8080", "--dry-run"}); code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "(内置) net.pids 8080") {
+		t.Errorf("dry-run output missing builtin plan:\n%s", out)
+	}
+}
+
+func TestNetPidsRequiresPort(t *testing.T) {
+	app, _, stderr := testApp(centos("docker"))
+
+	if code := app.Execute([]string{"net", "pids"}); code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr.String(), "缺少参数") {
+		t.Errorf("stderr = %s", stderr.String())
+	}
+}
+
 // TestCLIHelperProcess is re-executed as a child to verify exit-code passthrough.
 func TestCLIHelperProcess(t *testing.T) {
 	if os.Getenv("KOPSC_CLI_HELPER") != "1" {
