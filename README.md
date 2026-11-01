@@ -88,6 +88,8 @@ kopsc disk usage /var --depth 2      # 下钻一层（du -x --max-depth=2 -h | s
 kopsc disk usage --path /var         # 同上，用命名参数指定路径
 kopsc disk usage /var --dry-run      # 预览（内置命令同样支持）
 kopsc proc nohup ./server            # 后台运行命令，输出写日志（等价 nohup ./server > server.out 2>&1 &）
+kopsc proc wait nginx                # 每秒检查一次，等 nginx 退出后再继续
+kopsc proc wait java app.jar --timeout 60   # 多个关键字逻辑与；最多等 60 秒
 
 kopsc list                        # 全部命令及当前平台可用性
 kopsc explain docker.clearsafe    # 匹配过程、全部候选及各自被选中/拒绝的原因
@@ -136,7 +138,7 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | **net** | 网络与端口：端口被谁占用、本机监听了哪些端口 | [README.net.md](README.net.md) |
 | **disk** | 磁盘与文件占用：哪个目录、哪个文件最占空间 | [README.disk.md](README.disk.md) |
 | **diagnose** | 容器 / Pod 状态根因诊断（自动识别 Docker 与 K8s） | [README.diagnose.md](README.diagnose.md) |
-| **proc** | 本机进程：后台运行命令并写日志 | [README.proc.md](README.proc.md) |
+| **proc** | 本机进程：后台运行命令并写日志、等待进程退出 | [README.proc.md](README.proc.md) |
 | **pkg** | 系统软件包：刷新包管理器索引 | [README.pkg.md](README.pkg.md) |
 
 辅助命令（不涉及具体资源，直接用即可）：
@@ -161,6 +163,7 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | 查磁盘占用 | `kopsc disk usage`、`kopsc disk usage /var --depth 2` |
 | 排障 | `kopsc diagnose web` |
 | 后台跑服务 | `kopsc proc nohup ./server` |
+| 等进程退出 | `kopsc proc wait nginx`、`kopsc proc wait --pid 1234 --timeout 30` |
 | 刷新软件源 | `kopsc pkg refreshindex` |
 
 ## 平台识别

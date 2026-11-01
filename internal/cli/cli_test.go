@@ -903,3 +903,34 @@ func TestExplainHelpDocumentsWaysAndExitCodes(t *testing.T) {
 		}
 	}
 }
+
+func TestProcWaitRequiresTargetThroughCLI(t *testing.T) {
+	app, _, stderr := testApp(centos("docker"))
+	// No keywords and no --pid: kopsc must explain what to type.
+	if code := app.Execute([]string{"proc", "wait"}); code == 0 {
+		t.Fatal("expected a non-zero exit code without a target")
+	}
+	if !strings.Contains(stderr.String(), "缺少要等待的进程") {
+		t.Errorf("stderr = %s", stderr.String())
+	}
+}
+
+func TestProcWaitRejectsBadPIDThroughCLI(t *testing.T) {
+	app, _, stderr := testApp(centos("docker"))
+	if code := app.Execute([]string{"proc", "wait", "--pid", "abc"}); code == 0 {
+		t.Fatal("expected a non-zero exit code for a bad PID")
+	}
+	if !strings.Contains(stderr.String(), "--pid 需要正整数") {
+		t.Errorf("stderr = %s", stderr.String())
+	}
+}
+
+func TestProcWaitDryRunDoesNotPoll(t *testing.T) {
+	app, stdout, stderr := testApp(centos("docker"))
+	if code := app.Execute([]string{"proc", "wait", "--dry-run", "nginx"}); code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "[dry-run]") {
+		t.Errorf("dry-run output = %q", stdout.String())
+	}
+}

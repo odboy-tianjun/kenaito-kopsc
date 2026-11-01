@@ -2,10 +2,11 @@
 
 > 返回 [README.md](README.md)
 
-在后台运行命令并写日志，关掉终端也不会退出。
+在后台运行命令并写日志，关掉终端也不会退出；也可以等某个进程退出后再继续。
 
 ```bash
 kopsc proc nohup ./server            # 后台运行命令，输出写日志
+kopsc proc wait nginx                # 等 nginx 退出后返回
 ```
 
 ## 后台运行（proc.nohup）
@@ -38,3 +39,50 @@ kopsc proc nohup --dry-run ./server                       # 只打印判定依�
 | `-q`, `--quiet` | 不打印启动摘要（PID、日志路径） |
 | `-w`, `--wait` | 前台等待命令退出，回显其写入的日志内容并透传退出码 |
 | `--detach` / `--no-detach` | 默认脱离会话；`--no-detach` 保留当前会话（类似只加 `&`） |
+
+## 等待进程退出（proc.wait）
+
+`kopsc proc wait <关键字>... [--pid PID]...` 每秒检查一次目标进程是否还在：
+存在就继续等，直到它消失为止。适合在脚本里等一个服务真正停下来，
+替代 `while pgrep nginx; do sleep 1; done` 这类写法。
+
+```bash
+kopsc proc wait nginx                       # 等所有名字/命令行含 nginx 的进程退出
+kopsc proc wait nginx worker                # 关键字逻辑与：两个都命中才算目标
+kopsc proc wait --pid 1234                  # 等指定 PID 退出
+kopsc proc wait --pid 1234,5678             # 多个 PID（逗号分隔）
+kopsc proc wait nginx --timeout 30          # 最多等 30 秒
+kopsc proc wait nginx --once                # 只检查一次，不等待
+kopsc proc wait nginx --interval 500ms -q   # 每 0.5 秒查一次，不打印进度
+```
+
+### 匹配规则
+
+- 关键字在**进程名与完整命令行**中匹配，忽略大小写：
+  `kopsc proc wait nginx` 能命中 `/usr/sbin/nginx -g daemon off;`。
+- 给多个关键字时是**逻辑与**：全部命中才算目标进程。
+  例如 `kopsc proc wait java myapp.jar` 只等「既是 java 进程、命令行里又含 myapp.jar」的那些。
+- `--pid` 与关键字可以同时给：任一方仍有进程存在，就继续等待。
+- Windows 的 `tasklist` 不提供命令行，关键字只能匹配进程名（如 `nginx.exe`）。
+
+### 退出码
+
+| 退出码 | 含义 |
+| --- | --- |
+| `0` | 目标进程已全部退出；或启动时本来就没有匹配的进程 |
+| `2` | `--timeout` 到期时进程仍在运行，错误信息会列出残留的 PID |
+| `1` | 参数错误，或无法列出进程（例如没有权限） |
+
+### 选项
+
+| 选项 | 说明 |
+| --- | --- |
+| `<关键字>...` | 要等待的进程关键字，可多个（逻辑与） |
+| `--pid`, `-p` | 直接指定进程 ID；可写多次或用逗号分隔，如 `--pid 1234,5678` |
+| `--timeout` | 最长等待时间，默认不超时；可写 `30`（秒）或 `30s`、`1m` |
+| `--interval` | 检查间隔，默认 1 秒 |
+| `--once` | 只检查一次并打印结果，不等待 |
+| `-q`, `--quiet` | 不打印进度与结束提示 |
+
+> 关键字请直接作为参数书写；若关键字以 `-` 开头，用 `--` 分隔，例如 `kopsc proc wait -- -weird`。
+> `--dry-run` 只打印判定依据，不会去查询进程。

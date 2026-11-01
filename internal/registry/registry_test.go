@@ -25,7 +25,7 @@ func TestBuiltinIDsStable(t *testing.T) {
 		"docker.prunebuilder", "docker.prunevolumes", "docker.clearall",
 		"docker.compose.up", "docker.compose.down", "docker.compose.ps", "docker.compose.logs",
 		"diagnose",
-		"disk.usage", "net.pids", "net.ports", "proc.nohup", "pkg.refreshindex",
+		"disk.usage", "net.pids", "net.ports", "proc.nohup", "proc.wait", "pkg.refreshindex",
 	}
 	if got := reg.IDs(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("IDs() =\n%v\nwant\n%v", got, want)
@@ -344,5 +344,32 @@ func TestMatchIsComparable(t *testing.T) {
 	b := Match{OS: "linux", Distro: "centos", DistroLike: []string{"rhel"}, Runtime: "docker"}
 	if !reflect.DeepEqual(a, b) {
 		t.Fatal("Match should be a comparable plain struct value")
+	}
+}
+
+func TestProcWaitIsBuiltinEverywhere(t *testing.T) {
+	reg := Builtin()
+	cmd, ok := reg.Lookup("proc.wait")
+	if !ok {
+		t.Fatal("proc.wait not found")
+	}
+	// The command is read-only: it must not demand --yes.
+	if cmd.RequiresYes {
+		t.Error("proc.wait only observes processes and must not require --yes")
+	}
+	if cmd.Usage == "" {
+		t.Error("proc.wait should document its arguments in Usage")
+	}
+	seen := map[string]bool{}
+	for _, v := range cmd.Variants {
+		if v.Builtin != "proc.wait" || len(v.Argv) != 0 {
+			t.Errorf("variant for %s should be the proc.wait builtin, got %+v", v.Match.OS, v)
+		}
+		seen[v.Match.OS] = true
+	}
+	for _, osName := range []string{"linux", "darwin", "windows"} {
+		if !seen[osName] {
+			t.Errorf("proc.wait lacks a %s variant", osName)
+		}
 	}
 }

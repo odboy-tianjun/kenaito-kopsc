@@ -425,6 +425,34 @@ func Builtin() *Registry {
 			},
 		},
 		{
+			ID:      "proc.wait",
+			Group:   "proc",
+			Summary: "等待进程退出（关键字可多个，逻辑与；也可按 PID）",
+			Action: "每秒检查一次目标进程是否还在：存在就继续等，直到它消失为止。" +
+				"关键字在进程名与命令行中匹配（忽略大小写），多个关键字需全部命中（逻辑与）；" +
+				"--pid 可直接指定进程 ID（逗号分隔可多个），与关键字同时给出时任一方仍存在都会继续等待。" +
+				"默认一直等到进程退出；--timeout 可限时，超时以退出码 2 结束；--once 只检查一次不等待。" +
+				"只读，不修改任何进程",
+			Usage: "<关键字>... [--pid PID]...",
+			Variants: []Variant{
+				{
+					Match:   Match{OS: "linux"},
+					Builtin: "proc.wait",
+					Note:    "Linux 内置实现（读 /proc，回退 ps）",
+				},
+				{
+					Match:   Match{OS: "darwin"},
+					Builtin: "proc.wait",
+					Note:    "macOS 内置实现（ps -eo pid=,args=）",
+				},
+				{
+					Match:   Match{OS: "windows"},
+					Builtin: "proc.wait",
+					Note:    "Windows 内置实现（tasklist，关键字只能匹配进程名）",
+				},
+			},
+		},
+		{
 			ID:      "pkg.refreshindex",
 			Group:   "pkg",
 			Summary: "刷新系统包管理器的软件源索引",

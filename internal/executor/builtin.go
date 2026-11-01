@@ -45,6 +45,7 @@ var builtins = map[string]Builtin{
 	"net.pids":           runNetPIDs,
 	"net.ports":          runNetPorts,
 	"proc.nohup":         runNohup,
+	"proc.wait":          runProcWait,
 }
 
 // runDiagnose bridges the registry builtin to the diagnose package.

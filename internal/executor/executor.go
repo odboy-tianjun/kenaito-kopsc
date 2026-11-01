@@ -196,7 +196,20 @@ type ExitError struct {
 }
 
 func (e *ExitError) Error() string {
+	// When the error carries its own explanation (for example a timeout that
+	// lists what is still running), show it instead of the bare status code.
+	if e.Err != nil {
+		if msg := e.Err.Error(); msg != "" && !isExitStatus(msg) {
+			return msg
+		}
+	}
 	return fmt.Sprintf("命令以状态码 %d 退出", e.Code)
+}
+
+// isExitStatus reports whether msg is just an os/exec exit status, which adds
+// nothing to kopsc's own wording.
+func isExitStatus(msg string) bool {
+	return strings.HasPrefix(msg, "exit status ") || strings.HasPrefix(msg, "signal: ")
 }
 
 func (e *ExitError) Unwrap() error { return e.Err }
