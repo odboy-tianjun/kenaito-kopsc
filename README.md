@@ -226,6 +226,26 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 新分组需要新建 `README.<分组>.md`，并在本文件「命令一览」的表格里加一行链接。
 每条命令至少要写清：**作用**、**实际执行什么**、**示例**；有独有选项时补选项表。
 
+## 许可证
+
+本项目基于 [Apache License 2.0](LICENSE) 发布。
+
+```
+Copyright 2026 Odboy
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
+
 ## 开发
 
 ```bash
