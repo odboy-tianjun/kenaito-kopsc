@@ -1,7 +1,9 @@
 package executor
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"io"
 
 	"gitea.odboy.cn/odboy/kenaito-kopsc/internal/diagnose"
@@ -26,18 +28,62 @@ type BuiltinRequest struct {
 type Builtin func(ctx context.Context, req BuiltinRequest) error
 
 var builtins = map[string]Builtin{
-	"disk.usage":  runDiskUsage,
-	"diagnose":    runDiagnose,
-	"docker.load": runDockerLoad,
-	"docker.save": runDockerSave,
-	"net.pids":    runNetPIDs,
-	"proc.nohup":  runNohup,
+	"disk.usage":         runDiskUsage,
+	"diagnose":           runDiagnose,
+	"docker.df":          runDockerDF,
+	"docker.exec":        runDockerExec,
+	"docker.load":        runDockerLoad,
+	"docker.logs":        runDockerLogs,
+	"docker.restart":     runDockerRestart,
+	"docker.rm":          runDockerRM,
+	"docker.rm.preview":  runDockerPreviewRM,
+	"docker.rmi":         runDockerRMI,
+	"docker.rmi.preview": runDockerPreviewRMI,
+	"docker.save":        runDockerSave,
+	"docker.stats":       runDockerStats,
+	"docker.stop":        runDockerStop,
+	"net.pids":           runNetPIDs,
+	"proc.nohup":         runNohup,
 }
 
 // runDiagnose bridges the registry builtin to the diagnose package.
 func runDiagnose(ctx context.Context, req BuiltinRequest) error {
 	service := diagnose.New(req.Info, diagnose.ExecRunner{}, req.Stdout, req.Stderr)
 	return service.Run(ctx, req.Args)
+}
+
+// Preview runs a command's ConfirmBuiltin (if any) and writes the list of
+// objects the command would act on. It is used for the confirmation prompt and
+// for --dry-run, so neither path needs to touch the objects themselves.
+//
+// The list is built from the container/image references kopsc resolves, which
+// means every target is validated first: an unknown target is reported here
+// rather than after the user typed --yes. Commands without a ConfirmBuiltin
+// print nothing.
+func Preview(ctx context.Context, plan Plan, w io.Writer) error {
+	name := plan.PreviewBuiltin()
+	if name == "" {
+		return nil
+	}
+	fn, ok := LookupBuiltin(name)
+	if !ok {
+		return fmt.Errorf("未注册的确认动作 %q", name)
+	}
+	// Build the list in memory first: a target that fails to resolve must not
+	// leave a dangling "将影响:" heading behind.
+	var buf bytes.Buffer
+	if err := fn(ctx, BuiltinRequest{
+		Args:   plan.ExtraArgs,
+		Stdout: &buf,
+		Stderr: io.Discard,
+		Info:   plan.Result.Info,
+		Plan:   plan,
+	}); err != nil {
+		return err
+	}
+	fmt.Fprintln(w, "将影响:")
+	_, err := w.Write(buf.Bytes())
+	return err
 }
 
 // LookupBuiltin returns the implementation registered under name.

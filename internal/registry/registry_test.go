@@ -213,6 +213,9 @@ func TestDockerCommandsWellFormed(t *testing.T) {
 	destructive := map[string]bool{
 		"docker.clearall":     true,
 		"docker.prunevolumes": true,
+		// rm/rmi now list their targets and require an explicit --yes.
+		"docker.rm":  true,
+		"docker.rmi": true,
 	}
 	needsArgs := map[string]int{
 		"docker.logs":    1,
@@ -231,8 +234,16 @@ func TestDockerCommandsWellFormed(t *testing.T) {
 	}
 	// Built from kopsc's own implementation rather than a fixed argv.
 	builtin := map[string]string{
-		"docker.save": "docker.save",
-		"docker.load": "docker.load",
+		"docker.df":      "docker.df",
+		"docker.exec":    "docker.exec",
+		"docker.logs":    "docker.logs",
+		"docker.stats":   "docker.stats",
+		"docker.load":    "docker.load",
+		"docker.restart": "docker.restart",
+		"docker.rm":      "docker.rm",
+		"docker.rmi":     "docker.rmi",
+		"docker.save":    "docker.save",
+		"docker.stop":    "docker.stop",
 	}
 
 	for i := range reg.Commands {

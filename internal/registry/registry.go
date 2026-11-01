@@ -49,6 +49,11 @@ type Command struct {
 	// RequiresYes marks destructive commands: without an explicit --yes they
 	// print what they would do and exit non-zero instead of running.
 	RequiresYes bool
+	// ConfirmBuiltin names a builtin that lists exactly what the command would
+	// touch (the containers or images about to be deleted). It runs before the
+	// confirmation prompt and for --dry-run; its output is shown to the
+	// caller. Empty means "no preview available".
+	ConfirmBuiltin string
 	// Namespaced marks Kubernetes-aware commands where -n means --namespace
 	// (kubectl style) instead of the global --dry-run shorthand.
 	Namespaced bool

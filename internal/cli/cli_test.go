@@ -631,3 +631,105 @@ func TestDockerLoadThroughCLIRequiresArchive(t *testing.T) {
 		t.Errorf("stderr = %q", stderr.String())
 	}
 }
+
+// cliRuntime installs a fake docker answering both `images` and `ps`, and
+// returns the path of the invocation log.
+func cliRuntime(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "calls.log")
+	script := "#!/bin/sh\n" +
+		"echo \"$*\" >> " + logPath + "\n" +
+		"case \"$1\" in\n" +
+		"  images) cat <<'EOT'\nIMAGE ID\tREPOSITORY\tTAG\tDIGEST\n9c6f07244728\talpine\t3.20\t\nEOT\n" +
+		"    ;;\n" +
+		"  ps) cat <<'EOT'\n3f2a1b0c9d8e\tweb\tnginx:1.25\tUp 2 hours\nEOT\n" +
+		"    ;;\n" +
+		"esac\n"
+	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return logPath
+}
+
+func TestDockerExecThroughCLIDefaultsToInteractive(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake runtime is a shell script")
+	}
+	logPath := cliRuntime(t)
+
+	app, _, stderr := testApp(centos("docker"))
+	if code := app.Execute([]string{"docker", "exec", "web", "sh", "-c", "echo hi"}); code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	data, _ := os.ReadFile(logPath)
+	if !strings.Contains(string(data), "exec -it web -- sh -c echo hi") {
+		t.Errorf("docker calls = %q, want the -it/-- form", data)
+	}
+}
+
+func TestDockerExecRejectsDashItThroughCLI(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake runtime is a shell script")
+	}
+	cliRuntime(t)
+
+	app, _, stderr := testApp(centos("docker"))
+	if code := app.Execute([]string{"docker", "exec", "-it", "web", "sh"}); code == 0 {
+		t.Fatal("expected a non-zero exit code for an explicit -it")
+	}
+	if !strings.Contains(stderr.String(), "已默认以交互方式") {
+		t.Errorf("stderr = %q", stderr.String())
+	}
+}
+
+func TestDockerStopThroughCLIResolvesContainerName(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake runtime is a shell script")
+	}
+	logPath := cliRuntime(t)
+
+	app, _, stderr := testApp(centos("docker"))
+	if code := app.Execute([]string{"docker", "stop", "3f2a1b"}); code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	data, _ := os.ReadFile(logPath)
+	if !strings.Contains(string(data), "stop web") {
+		t.Errorf("docker calls = %q, want `stop web`", data)
+	}
+}
+
+func TestDockerRMWithoutYesListsTargetsAndExitsTwo(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake runtime is a shell script")
+	}
+	logPath := cliRuntime(t)
+
+	app, stdout, stderr := testApp(centos("docker"))
+	if code := app.Execute([]string{"docker", "rm", "web"}); code != 2 {
+		t.Fatalf("exit code = %d, want 2; stderr=%s", code, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{"将影响:", "3f2a1b0c9d8e", "web", "nginx:1.25", "Up 2 hours", "这是破坏性命令", "--yes"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("confirmation missing %q:\n%s", want, out)
+		}
+	}
+	for _, call := range readCalls(logPath) {
+		if strings.HasPrefix(call, "rm ") {
+			t.Fatalf("docker rm must not run without --yes, calls = %v", readCalls(logPath))
+		}
+	}
+}
+
+func readCalls(path string) []string {
+	data, _ := os.ReadFile(path)
+	var out []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}

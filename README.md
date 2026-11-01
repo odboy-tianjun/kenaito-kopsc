@@ -52,7 +52,7 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
 kopsc docker ps                   # 列出运行中的容器
 kopsc docker psall                # 含已停止的容器
 kopsc docker logs -f web          # 查看日志（容器名必填，选项可透传）
-kopsc docker exec -it web sh      # 进入容器
+kopsc docker exec web sh          # 进入容器（默认就是交互模式，无需 -it）
 kopsc docker compose up           # 启动 Compose 服务
 kopsc docker clearall --yes       # 深度清理（破坏性命令，必须显式 --yes）
 kopsc docker save alpine:3.20     # 自动保存为 alpine_3.20.tar（传镜像 ID 会先解析出名称）
@@ -135,8 +135,8 @@ $ kopsc disk usage /var
 - 所有 Docker 命令在三个平台都调用 `docker`（macOS / Windows 上即 Docker Desktop）。
 - `logs`、`inspect`、`start`、`stop`、`restart`、`rm`、`rmi`、`exec`、`pull`、`tag`、`save`、`load`、`cp`
   需要位置参数，缺失时直接报错并给出用法。
-- 破坏性命令只有 `clearall`（`system prune -a -f`）与 `prunevolumes`（`volume prune -f`）：
-  未带 `--yes` 时只打印影响范围与将执行的命令，并以退出码 2 结束。
+- 破坏性命令是 `rm`、`rmi`、`clearall`（`system prune -a -f`）与 `prunevolumes`（`volume prune -f`）：
+  未带 `--yes` 时先列出将删除的对象、再打印将执行的命令，并以退出码 2 结束。
 - `docker compose` 对应 Compose v2。
 - `docker clearsafe` 的安全契约：只加 `-f` 以便无人值守执行，**不**加 `-a`（不清理全部未使用镜像），
   **不**加 `--volumes`（不删除卷），仅清理停止的容器、未使用的网络与悬空镜像。
@@ -161,6 +161,41 @@ kopsc docker load a.tar b.tar                      # 一次导入多个
 - `--platform` 等运行时选项原样透传给底层运行时。
 - `docker load` 的归档文件是**位置参数**（对应原来的 `docker load < xxx.tar`），可一次给出多个；
   `-i/--input` 仍然可用，传 `-` 仍表示从标准输入读取。
+
+### 容器与镜像的简写（exec / rm / rmi / stop / restart）
+
+这几条命令按 kopsc 的意图做了解析，不再要求手写 docker 的细节：
+
+```bash
+kopsc docker exec web sh            # 等价 docker exec -it web -- sh（-it 已是默认）
+kopsc docker exec -u 0 web id       # 容器名之前的 -u/-w/-e 照常透传给 docker
+kopsc docker stop 3f2a1b           # 按 ID 前缀找到容器并停止
+kopsc docker rm db                 # 删除已停止的容器；运行中的会提示先 stop
+kopsc docker rmi sha256:5ca7b1d5e2fc   # 按 ID 或唯一前缀删除镜像
+```
+
+- 容器可按名称、ID 或唯一 ID 前缀定位；镜像可按名称、ID、`sha256:ID` 或唯一前缀定位。
+  目标不存在或前缀有歧义时，kopsc 直接报错，不会调用 docker。
+- `exec` 默认交互，命令之后的参数一律作为容器内命令，因此命令自己的 `-i`、`-p` 不会被当成 docker 选项；
+  显式传 `-i`/`-t`/`-it` 会报错提示「已默认交互」。
+- `rm`/`rmi` 属于破坏性命令：不带 `--yes` 时先列出将删除的对象（容器显示 ID/名称/镜像/状态，
+  镜像显示 镜像/ID/创建/大小）再以退出码 2 结束；不再接受 `-f`，强删请用 `--yes`。
+- `rm` 遇到运行中的容器会提示先 `kopsc docker stop <名称>`，不会替你强删。
+
+### 日志、占用与实时状态（logs / df / stats）
+
+```bash
+kopsc docker logs web --since 2h           # 只看最近 2 小时
+kopsc docker logs --grep ERROR web         # 只看匹配行（kopsc 选项写在容器名之前）
+kopsc docker logs --save /var/log/web.log web -f   # 同时落盘，-f 仍交给 docker
+kopsc docker df                            # 按占用大小排序的类型排行
+kopsc docker stats                         # 单次快照，默认统计全部运行中容器
+kopsc docker stats web --format '{{.CPUPerc}}'
+```
+
+- `--since`/`--grep`/`--save` 是 kopsc 私有选项，必须写在容器名之前；容器名之后的参数原样交给 docker。
+- `df` 输出「类型 / 项 / 可清理 / 大小 / 可回收」，末尾附总计与可回收提示。
+- `stats` 总是单次快照（`--no-stream`），不会再刷屏；给容器名时只统计这些，且要求容器正在运行。
 
 ### 容器/Pod 诊断（diagnose）
 

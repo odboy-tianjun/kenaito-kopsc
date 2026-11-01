@@ -57,6 +57,12 @@ func (p Plan) Display() string {
 	return strings.Join(argv, " ")
 }
 
+// PreviewBuiltin returns the builtin advertised by the resolved command for
+// listing what it would touch, or "" when the command has none.
+func (p Plan) PreviewBuiltin() string {
+	return p.Result.Command.ConfirmBuiltin
+}
+
 // Explain writes why this variant was chosen and what will run.
 func (p Plan) Explain(w io.Writer) {
 	if w == nil {

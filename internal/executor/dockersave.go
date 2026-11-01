@@ -5,11 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"gitea.odboy.cn/odboy/kenaito-kopsc/internal/diagnose"
 )
 
 // runDockerSave implements `docker save <镜像> > <镜像名>.tar`.
@@ -43,20 +40,20 @@ func runDockerSave(ctx context.Context, req BuiltinRequest) error {
 		return err
 	}
 
-	ref, err := resolveImageRef(ctx, diagnose.ExecRunner{}, image)
+	ref, err := resolveImageRef(ctx, image)
 	if err != nil {
 		return err
 	}
-	outPath := archiveName(ref)
+	outPath := archiveName(ref.Name)
 
 	// Docker derives the archive's internal tags from the image itself, so the
 	// caller's argument is passed through as given.
 	args := append([]string{"save", "-o", outPath, image}, passthrough...)
-	if err := runRuntimeCommand(ctx, args, req); err != nil {
+	if err := dockerRun(ctx, args, req); err != nil {
 		return err
 	}
 
-	fmt.Fprintf(req.Stdout, "已保存: %s\n", ref)
+	fmt.Fprintf(req.Stdout, "已保存: %s\n", ref.Name)
 	fmt.Fprintf(req.Stdout, "文件:   %s\n", outPath)
 	return nil
 }
@@ -101,7 +98,7 @@ func runDockerLoad(ctx context.Context, req BuiltinRequest) error {
 		if !stream {
 			return errors.New("缺少归档文件；用法: kopsc docker load <镜像归档.tar>")
 		}
-		return runRuntimeCommand(ctx, []string{"load"}, req)
+		return dockerRun(ctx, []string{"load"}, req)
 	}
 
 	var paths []string
@@ -117,7 +114,7 @@ func runDockerLoad(ctx context.Context, req BuiltinRequest) error {
 	for _, path := range paths {
 		args = append(args, "-i", path)
 	}
-	return runRuntimeCommand(ctx, args, req)
+	return dockerRun(ctx, args, req)
 }
 
 // saveValueOption lists docker `save` options that take a separate
@@ -153,117 +150,6 @@ func existingArchive(archive string) (string, error) {
 	return archive, nil
 }
 
-// imageRef is the repository and tag (or digest) of one local image.
-type imageRef struct {
-	Name string // repository[:tag][@digest], e.g. "alpine:3.20"
-	ID   string // image ID, e.g. "sha256:abc..."
-}
-
-// customFormat lets a single `images --format` call list IDs together with
-// names (docker images -q prints IDs only).
-const customFormat = `{{.ID}}{{"\t"}}{{if .Repository}}{{.Repository}}{{"\t"}}{{.Tag}}{{"\t"}}{{.Digest}}{{end}}`
-
-// resolveImageRef maps the user's argument to the image's repository[:tag].
-//
-// A name is used as given once it is confirmed locally. An image ID — with or
-// without the sha256: prefix, or a unique prefix — resolves to the name it is
-// tagged with; an untagged image is an error, because the archive would have no
-// name to take its file name from. Names always win over IDs, so a short name
-// such as "alpine" is never mistaken for an ID prefix.
-func resolveImageRef(ctx context.Context, runner diagnose.Runner, image string) (string, error) {
-	refs, err := listImages(ctx, runner)
-	if err != nil {
-		return "", err
-	}
-
-	for _, ref := range refs {
-		if ref.Name == image {
-			return image, nil
-		}
-	}
-
-	if !looksLikeImageID(image) {
-		return "", fmt.Errorf("本地没有镜像 %q，可用 kopsc docker images 查看", image)
-	}
-
-	// Same image ID on several rows is normal (one row per repository:tag).
-	ids := map[string][]string{}
-	var order []string
-	for _, ref := range refs {
-		id := normalizeImageID(ref.ID)
-		if !strings.HasPrefix(id, normalizeImageID(image)) {
-			continue
-		}
-		if _, seen := ids[id]; !seen {
-			order = append(order, id)
-		}
-		ids[id] = append(ids[id], ref.Name)
-	}
-
-	switch len(order) {
-	case 0:
-		return "", fmt.Errorf("本地没有镜像 ID %q，可用 kopsc docker images 查看", image)
-	case 1:
-	default:
-		return "", fmt.Errorf("镜像 ID %q 匹配多个本地镜像（%s），请改用镜像名称",
-			image, strings.Join(order, ", "))
-	}
-
-	names := ids[order[0]]
-	if len(names) > 1 {
-		return "", fmt.Errorf("镜像 ID %q 对应多个名称（%s），请直接指定要保存的名称",
-			image, strings.Join(names, ", "))
-	}
-	if len(names) == 0 || names[0] == "" {
-		return "", fmt.Errorf("镜像 ID %q 存在但没有名称（未打标签），无法据此命名归档文件；请先 docker tag 再保存", image)
-	}
-	return names[0], nil
-}
-
-// listImages asks docker for every local image. docker images prints a header
-// line, which is dropped explicitly.
-func listImages(ctx context.Context, runner diagnose.Runner) ([]imageRef, error) {
-	result, err := runner.Run(ctx, "docker", "images", "--format", customFormat)
-	if err != nil {
-		return nil, runtimeError("images", result, err)
-	}
-
-	var refs []imageRef
-	for _, line := range strings.Split(string(result.Stdout), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "REPOSITORY") {
-			continue
-		}
-		fields := strings.Split(line, "\t")
-		ref := imageRef{ID: strings.TrimSpace(fields[0])}
-		if len(fields) >= 3 {
-			repo, tag, digest := strings.TrimSpace(fields[1]), strings.TrimSpace(fields[2]), ""
-			if len(fields) >= 4 {
-				digest = strings.TrimSpace(fields[3])
-			}
-			ref.Name = formatImageName(repo, tag, digest)
-		}
-		refs = append(refs, ref)
-	}
-	return refs, nil
-}
-
-// formatImageName renders repository[:tag][@digest]. "<none>" is how both
-// runtimes group untagged images.
-func formatImageName(repo, tag, digest string) string {
-	if repo == "<none>" {
-		return ""
-	}
-	name := repo
-	if tag != "" && tag != "<none>" {
-		name += ":" + tag
-	}
-	if digest != "" && digest != "<none>" {
-		name += "@" + digest
-	}
-	return name
-}
-
 // archiveName turns an image reference into a file name: every character that
 // cannot appear in a portable file name, including the ":" between repository
 // and tag, becomes "_". "alpine:3.20" -> "alpine_3.20.tar" and
@@ -279,46 +165,4 @@ func archiveName(image string) string {
 		}
 	}
 	return b.String() + ".tar"
-}
-
-// looksLikeImageID reports whether s is an ID (optionally sha256:-prefixed)
-// instead of a name.
-func looksLikeImageID(s string) bool {
-	s = normalizeImageID(s)
-	if len(s) < 4 || len(s) > 64 {
-		return false
-	}
-	for _, r := range s {
-		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
-			return false
-		}
-	}
-	return true
-}
-
-func normalizeImageID(s string) string {
-	return strings.ToLower(strings.TrimPrefix(strings.TrimPrefix(s, "sha256:"), "sha256"))
-}
-
-// runRuntimeCommand runs one docker command, streaming its output.
-func runRuntimeCommand(ctx context.Context, args []string, req BuiltinRequest) error {
-	cmd := exec.CommandContext(ctx, "docker", args...)
-	cmd.Stdout = req.Stdout
-	cmd.Stderr = req.Stderr
-	if err := cmd.Run(); err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			return &ExitError{Code: exitErr.ExitCode(), Err: err}
-		}
-		return fmt.Errorf("执行 docker 失败: %w", err)
-	}
-	return nil
-}
-
-func runtimeError(subcommand string, result diagnose.CommandResult, err error) error {
-	detail := strings.TrimSpace(string(result.Stderr))
-	if detail == "" {
-		detail = err.Error()
-	}
-	return fmt.Errorf("docker %s 失败: %s", subcommand, detail)
 }

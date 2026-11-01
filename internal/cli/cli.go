@@ -152,9 +152,7 @@ func (a *App) newLeaf(cmd *registry.Command, name string) *cobra.Command {
 			plan := executor.Plan{Result: result, ExtraArgs: extra}
 
 			if cmd.RequiresYes && !yes && !dryRun {
-				a.printConfirmation(cmd, plan)
-				a.exitCode = 2
-				return nil
+				return a.printConfirmation(cmd, plan)
 			}
 
 			return plan.Run(context.Background(), executor.Options{
@@ -168,14 +166,27 @@ func (a *App) newLeaf(cmd *registry.Command, name string) *cobra.Command {
 	return leaf
 }
 
-// printConfirmation explains a destructive command and how to approve it.
-func (a *App) printConfirmation(cmd *registry.Command, plan executor.Plan) {
+// printConfirmation explains a destructive command and how to approve it. If
+// the command has a preview builtin, the objects it would touch are listed
+// first (and an unknown target is reported before asking for --yes).
+func (a *App) printConfirmation(cmd *registry.Command, plan executor.Plan) error {
+	if err := executor.Preview(context.Background(), plan, a.Stdout); err != nil {
+		return err
+	}
+
 	w := a.Stdout
 	fmt.Fprintln(w, "这是破坏性命令，未执行。")
 	fmt.Fprintf(w, "命令:   %s\n", cmd.Invocation())
 	fmt.Fprintf(w, "将执行: %s\n", plan.Display())
 	fmt.Fprintf(w, "影响:   %s\n\n", cmd.Action)
-	fmt.Fprintf(w, "确认执行请追加 --yes：\n  %s --yes\n", cmd.Invocation())
+	// Repeat the caller's own arguments so the suggestion is copy-pasteable.
+	suggested := cmd.Invocation() + " --yes"
+	if len(plan.ExtraArgs) > 0 {
+		suggested += " " + strings.Join(plan.ExtraArgs, " ")
+	}
+	fmt.Fprintf(w, "确认执行请追加 --yes：\n  %s\n", suggested)
+	a.exitCode = 2
+	return nil
 }
 
 // parseLeafArgs splits leaf arguments: kopsc-level flags before the first `--`

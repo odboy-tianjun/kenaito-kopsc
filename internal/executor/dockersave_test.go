@@ -50,6 +50,15 @@ func TestLooksLikeImageID(t *testing.T) {
 // file as one line.
 func fakeRuntime(t *testing.T, images string) (logPath string) {
 	t.Helper()
+	return fakeRuntimeScript(t, images, "", "")
+}
+
+// fakeRuntimeScript installs a fake `docker` on PATH. images and ps are the
+// payloads of `docker images --format ...` and `docker ps -a --format ...`;
+// every invocation is appended to the returned log file as one line. Empty
+// payloads print nothing.
+func fakeRuntimeScript(t *testing.T, images, ps, extraCase string) (logPath string) {
+	t.Helper()
 	dir := t.TempDir()
 	logPath = filepath.Join(dir, "calls.log")
 
@@ -59,6 +68,9 @@ func fakeRuntime(t *testing.T, images string) (logPath string) {
 		"case \"$1\" in\n" +
 		"  images) cat <<'EOF'\n" + images + "\nEOF\n" +
 		"    ;;\n" +
+		"  ps) cat <<'EOF'\n" + ps + "\nEOF\n" +
+		"    ;;\n" +
+		extraCase +
 		"esac\n"
 	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
