@@ -116,10 +116,10 @@ func (p Plan) Run(ctx context.Context, opts Options) error {
 			return fmt.Errorf("未注册的内置动作 %q", variant.Builtin)
 		}
 		return fn(ctx, BuiltinRequest{
-			Args:   p.ExtraArgs,
-			Stdin:  opts.Stdin,
-			Stdout: opts.Stdout,
-			Stderr: opts.Stderr,
+			Args:      p.ExtraArgs,
+			Stdin:     opts.Stdin,
+			Stdout:    opts.Stdout,
+			Stderr:    opts.Stderr,
 			Info:      p.Result.Info,
 			Plan:      p,
 			Confirmed: opts.Confirmed,

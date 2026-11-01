@@ -327,3 +327,87 @@ func TestBuildPlanListsEachSqueezedDayOnce(t *testing.T) {
 		t.Errorf("squeezed day = %q", got)
 	}
 }
+
+func TestPlanRetimeRedateStartingFromDay(t *testing.T) {
+	// Three commits originally on 2026-10-01, re-dated from 2026-11-01 with one
+	// commit per day.
+	date := day(2026, 10, 1)
+	commits := []gitCommit{
+		commitAt("c1", date, 9, 0, 0),
+		commitAt("c2", date, 10, 0, 0),
+		commitAt("c3", date, 11, 0, 0),
+	}
+	opts := defaultRetimeOptions(3)
+	opts.StartDate = day(2026, 11, 1)
+	opts.PerDay = 1
+	opts.DayGap = 1
+
+	plan := planRetime(commits, opts)
+	if len(plan) != 3 {
+		t.Fatalf("plan has %d entries", len(plan))
+	}
+	for i, want := range []string{"2026-11-01", "2026-11-02", "2026-11-03"} {
+		got := plan[i].NewTime.In(cst).Format("2006-01-02")
+		if got != want {
+			t.Errorf("commit %d re-dated to %s, want %s", i+1, got, want)
+		}
+		if h := plan[i].NewTime.In(cst).Hour(); h < 21 || h > 22 {
+			t.Errorf("commit %d at hour %d, want 21-22", i+1, h)
+		}
+	}
+}
+
+func TestPlanRetimeRedateHonoursDayGap(t *testing.T) {
+	date := day(2026, 10, 1)
+	commits := []gitCommit{
+		commitAt("c1", date, 9, 0, 0),
+		commitAt("c2", date, 10, 0, 0),
+	}
+	opts := defaultRetimeOptions(4)
+	opts.StartDate = day(2026, 11, 1)
+	opts.PerDay = 1
+	opts.DayGap = 3
+
+	plan := planRetime(commits, opts)
+	if got := plan[1].NewTime.In(cst).Format("2006-01-02"); got != "2026-11-04" {
+		t.Fatalf("second commit on %s, want 2026-11-04 (gap 3 days)", got)
+	}
+}
+
+func TestPlanRetimeRedatePacksSeveralPerDay(t *testing.T) {
+	date := day(2026, 10, 1)
+	var commits []gitCommit
+	for i := 0; i < 4; i++ {
+		commits = append(commits, commitAt("c", date, 9, i, 0))
+	}
+	opts := defaultRetimeOptions(5)
+	opts.StartDate = day(2026, 11, 1)
+	opts.PerDay = 2
+	opts.DayGap = 1
+
+	plan := planRetime(commits, opts)
+	firstDay := plan[0].NewTime.In(cst).Format("2006-01-02")
+	secondOfFirstDay := plan[1].NewTime.In(cst).Format("2006-01-02")
+	thirdDay := plan[2].NewTime.In(cst).Format("2006-01-02")
+	if firstDay != "2026-11-01" || secondOfFirstDay != "2026-11-01" {
+		t.Fatalf("first two commits should share 2026-11-01, got %s and %s", firstDay, secondOfFirstDay)
+	}
+	if thirdDay != "2026-11-02" {
+		t.Fatalf("third commit on %s, want 2026-11-02", thirdDay)
+	}
+	// Within a day the times stay ordered.
+	if !plan[1].NewTime.After(plan[0].NewTime) {
+		t.Fatalf("same-day commits are not ordered: %v, %v", plan[0].NewTime, plan[1].NewTime)
+	}
+}
+
+func TestPlanRetimeWithoutStartDateKeepsOriginalDays(t *testing.T) {
+	commits := []gitCommit{
+		commitAt("c1", day(2026, 10, 1), 9, 0, 0),
+		commitAt("c2", day(2026, 10, 5), 9, 0, 0),
+	}
+	plan := planRetime(commits, defaultRetimeOptions(1))
+	if a, b := plan[0].NewTime.In(cst).Format("2006-01-02"), plan[1].NewTime.In(cst).Format("2006-01-02"); a != "2026-10-01" || b != "2026-10-05" {
+		t.Fatalf("original days changed: %s, %s", a, b)
+	}
+}

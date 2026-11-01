@@ -32,6 +32,13 @@ type retimeOptions struct {
 	// spacing found on the remote branch. A zero (or out-of-range) entry falls
 	// back to a random gap.
 	Gaps []time.Duration
+
+	// StartDate, when set, re-dates the commits instead of keeping their
+	// original days: the selected commits are laid out in order starting at
+	// StartDate, stepping DayGap days per day and PerDay commits per day.
+	StartDate time.Time
+	DayGap    int // days between consecutive commit days, at least 1
+	PerDay    int // commits placed on one day, 0 means "unlimited" (one day only)
 }
 
 // defaultRetimeOptions matches the command's documented behaviour: commits land
@@ -59,33 +66,60 @@ func planRetime(commits []gitCommit, opts retimeOptions) []retime {
 	window := opts.WindowEnd - opts.WindowStart
 	out := make([]retime, 0, len(commits))
 
+	// When a start date is given, days are assigned rather than inherited.
+	redate := !opts.StartDate.IsZero()
+	if redate && opts.DayGap < 1 {
+		opts.DayGap = 1
+	}
+
 	// Group by calendar day, preserving order.
 	var dayCommits []gitCommit
-	currentDay := time.Time{}
+	var day time.Time
 	flush := func() {
 		if len(dayCommits) == 0 {
 			return
 		}
-		out = append(out, planDay(dayCommits, opts, window)...)
+		out = append(out, planDay(day, dayCommits, opts, window)...)
 		dayCommits = nil
 	}
 
 	for _, c := range commits {
-		day := c.Date()
-		if !currentDay.IsZero() && !day.Equal(currentDay) {
+		if redate {
+			// Start a new day whenever the current one is full.
+			if len(dayCommits) == 0 {
+				if !day.IsZero() {
+					day = day.AddDate(0, 0, opts.DayGap)
+				} else {
+					day = midnightOf(opts.StartDate)
+				}
+			}
+			if opts.PerDay > 0 && len(dayCommits) >= opts.PerDay {
+				flush()
+				day = day.AddDate(0, 0, opts.DayGap)
+			}
+			dayCommits = append(dayCommits, c)
+			continue
+		}
+
+		original := c.Date()
+		if !day.IsZero() && !original.Equal(day) {
 			flush()
 		}
-		currentDay = day
+		day = original
 		dayCommits = append(dayCommits, c)
 	}
 	flush()
 	return out
 }
 
+// midnightOf returns the start of the calendar day of t, in t's location.
+func midnightOf(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+}
+
 // planDay spreads one day's commits across the window.
-func planDay(commits []gitCommit, opts retimeOptions, window time.Duration) []retime {
+func planDay(day time.Time, commits []gitCommit, opts retimeOptions, window time.Duration) []retime {
 	out := make([]retime, 0, len(commits))
-	day := commits[0].Date()
 
 	offsets, squeezed := spreadWithin(day, len(commits), opts, window)
 

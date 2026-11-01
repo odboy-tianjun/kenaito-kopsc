@@ -311,9 +311,9 @@ func (a *App) newLeaf(cmd *registry.Command, name string) *cobra.Command {
 			return plan.Run(context.Background(), executor.Options{
 				DryRun:    dryRun,
 				Confirmed: yes,
-				Stdin:  a.Stdin,
-				Stdout: a.Stdout,
-				Stderr: a.Stderr,
+				Stdin:     a.Stdin,
+				Stdout:    a.Stdout,
+				Stderr:    a.Stderr,
 			})
 		},
 	}

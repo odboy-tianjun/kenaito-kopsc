@@ -25,6 +25,12 @@ type gitRetimeOptions struct {
 	Branch     string
 	NoPush     bool
 	MatchEmote bool // --interval match-remote
+
+	// Redating: when StartDate is set, the selected commits are re-dated in
+	// order starting there instead of keeping their original days.
+	StartDate time.Time
+	DayGap    int
+	PerDay    int
 }
 
 // runGitRetime rewrites the timestamps of commits in [From, To] so they land
@@ -110,8 +116,18 @@ func writeRetimePreview(req BuiltinRequest, plan retimePlan, opts gitRetimeOptio
 	fmt.Fprintf(w, "改写:   %d 个提交（分支 %s，远程 %s）\n", len(plan.Commits), plan.Branch, plan.Remote)
 	fmt.Fprintf(w, "强推:   %s\n", pushSummary(plan, opts))
 	fmt.Fprintf(w, "目标:   %s\n", target)
-	fmt.Fprintf(w, "窗口:   %s-%s（保留原日期）\n\n",
-		clockOf(opts.Window), clockOf(opts.WindowEnd))
+	dateRule := "保留原日期"
+	if !opts.StartDate.IsZero() {
+		dateRule = "从 " + opts.StartDate.Format("2006-01-02") + " 起重排"
+		if opts.PerDay > 0 {
+			dateRule += fmt.Sprintf("，每天 %d 个", opts.PerDay)
+		}
+		if opts.DayGap > 1 {
+			dateRule += fmt.Sprintf("，间隔 %d 天", opts.DayGap)
+		}
+	}
+	fmt.Fprintf(w, "窗口:   %s-%s（%s）\n\n",
+		clockOf(opts.Window), clockOf(opts.WindowEnd), dateRule)
 
 	rows := [][]string{{"提交", "原时间", "新时间", "主题"}}
 	for _, item := range plan.Commits {
@@ -122,11 +138,19 @@ func writeRetimePreview(req BuiltinRequest, plan retimePlan, opts gitRetimeOptio
 		rows = append(rows, []string{
 			item.Short,
 			item.OldAuthor.Format("2006-01-02 15:04:05"),
-			item.NewTime.Format("15:04:05") + mark,
+			newTimeCell(item, opts) + mark,
 			item.Subject,
 		})
 	}
 	writeDisplayColumns(w, rows)
+}
+
+// newTimeCell shows the new time, with its date when dates are reassigned.
+func newTimeCell(item retime, opts gitRetimeOptions) string {
+	if opts.StartDate.IsZero() {
+		return item.NewTime.Format("15:04:05")
+	}
+	return item.NewTime.Format("2006-01-02 15:04:05")
 }
 
 // pushSummary states whether the branch will be force pushed.
@@ -193,6 +217,9 @@ func collectRetimePlan(ctx context.Context, runner gitRunner, opts gitRetimeOpti
 		MaxGap:      opts.MaxGap,
 		FirstGapMax: 20 * time.Minute,
 		Rand:        newRetimeRand(opts.Seed),
+		StartDate:   opts.StartDate,
+		DayGap:      opts.DayGap,
+		PerDay:      opts.PerDay,
 	}
 	_ = opts.MatchEmote
 	return buildPlan(selected, plannerOpts, branch, remote), nil
@@ -353,6 +380,34 @@ func parseGitRetimeArgs(args []string, now time.Time) (gitRetimeOptions, bool, e
 			opts.Branch = v
 		case "--no-push":
 			opts.NoPush = true
+		case "--start-date":
+			v, err := takeValue()
+			if err != nil {
+				return opts, false, err
+			}
+			if opts.StartDate, err = parseDate(v); err != nil {
+				return opts, false, err
+			}
+		case "--day-gap":
+			v, err := takeValue()
+			if err != nil {
+				return opts, false, err
+			}
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 1 {
+				return opts, false, fmt.Errorf("--day-gap 需要大于 0 的整数（天数），收到 %q", v)
+			}
+			opts.DayGap = n
+		case "--per-day":
+			v, err := takeValue()
+			if err != nil {
+				return opts, false, err
+			}
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 1 {
+				return opts, false, fmt.Errorf("--per-day 需要大于 0 的整数（每天提交数），收到 %q", v)
+			}
+			opts.PerDay = n
 		default:
 			return opts, false, fmt.Errorf("未知选项 %q", arg)
 		}
@@ -381,6 +436,17 @@ func parseGitRetimeArgs(args []string, now time.Time) (gitRetimeOptions, bool, e
 	}
 	if opts.MaxGap <= opts.MinGap {
 		return opts, false, fmt.Errorf("间隔上限必须大于下限")
+	}
+	// --day-gap / --per-day only make sense together with --start-date.
+	if opts.StartDate.IsZero() {
+		if opts.DayGap > 0 || opts.PerDay > 0 {
+			return opts, false, fmt.Errorf("--day-gap 与 --per-day 需要配合 --start-date 使用" +
+				"（不给 --start-date 时保留每个提交的原日期）")
+		}
+		opts.DayGap = 1
+	} else if opts.DayGap < 1 {
+		// Re-dating defaults to consecutive days.
+		opts.DayGap = 1
 	}
 	return opts, confirmed, nil
 }
