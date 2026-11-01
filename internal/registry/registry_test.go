@@ -25,7 +25,7 @@ func TestBuiltinIDsStable(t *testing.T) {
 		"docker.prunebuilder", "docker.prunevolumes", "docker.clearall",
 		"docker.compose.up", "docker.compose.down", "docker.compose.ps", "docker.compose.logs",
 		"diagnose",
-		"disk.usage", "net.pids", "net.ports", "proc.nohup", "proc.wait", "pkg.refreshindex",
+		"disk.usage", "net.pids", "net.ports", "proc.nohup", "proc.wait", "java.run", "pkg.refreshindex",
 	}
 	if got := reg.IDs(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("IDs() =\n%v\nwant\n%v", got, want)
@@ -370,6 +370,37 @@ func TestProcWaitIsBuiltinEverywhere(t *testing.T) {
 	for _, osName := range []string{"linux", "darwin", "windows"} {
 		if !seen[osName] {
 			t.Errorf("proc.wait lacks a %s variant", osName)
+		}
+	}
+}
+
+func TestJavaRunIsBuiltinEverywhere(t *testing.T) {
+	reg := Builtin()
+	cmd, ok := reg.Lookup("java.run")
+	if !ok {
+		t.Fatal("java.run not found")
+	}
+	if cmd.RequiresYes {
+		t.Error("java.run only starts an application; it must not require --yes")
+	}
+	if cmd.MinArgs != 1 || !strings.Contains(cmd.Usage, ".jar") {
+		t.Errorf("java.run must require the jar argument, got MinArgs=%d Usage=%q", cmd.MinArgs, cmd.Usage)
+	}
+	for _, want := range []string{"JDK", "内存"} {
+		if !strings.Contains(cmd.Action, want) {
+			t.Errorf("java.run Action should mention %q:\n%s", want, cmd.Action)
+		}
+	}
+	seen := map[string]bool{}
+	for _, v := range cmd.Variants {
+		if v.Builtin != "java.run" || len(v.Argv) != 0 {
+			t.Errorf("variant for %s should be the java.run builtin, got %+v", v.Match.OS, v)
+		}
+		seen[v.Match.OS] = true
+	}
+	for _, osName := range []string{"linux", "darwin", "windows"} {
+		if !seen[osName] {
+			t.Errorf("java.run lacks a %s variant", osName)
 		}
 	}
 }

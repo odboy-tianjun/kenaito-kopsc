@@ -91,6 +91,10 @@ kopsc proc nohup ./server            # 后台运行命令，输出写日志（�
 kopsc proc wait nginx                # 每秒检查一次，等 nginx 退出后再继续
 kopsc proc wait java app.jar --timeout 60   # 多个关键字逻辑与；最多等 60 秒
 
+kopsc java run app.jar                     # 按 JDK 版本自动套调优参数并运行
+kopsc java run app.jar -- --spring.profiles.active=prod
+kopsc java run --jdk 17 --print-flags app.jar   # 只看最终 java 命令行
+
 kopsc list                        # 全部命令及当前平台可用性
 kopsc explain docker.clearsafe    # 匹配过程、全部候选及各自被选中/拒绝的原因
 kopsc explain docker clearsafe    # 同上，空格写法也支持
@@ -139,6 +143,7 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | **disk** | 磁盘与文件占用：哪个目录、哪个文件最占空间 | [README.disk.md](README.disk.md) |
 | **diagnose** | 容器 / Pod 状态根因诊断（自动识别 Docker 与 K8s） | [README.diagnose.md](README.diagnose.md) |
 | **proc** | 本机进程：后台运行命令并写日志、等待进程退出 | [README.proc.md](README.proc.md) |
+| **java** | Java 应用：按 JDK 版本套用调优参数并运行 jar | [README.java.md](README.java.md) |
 | **pkg** | 系统软件包：刷新包管理器索引 | [README.pkg.md](README.pkg.md) |
 
 辅助命令（不涉及具体资源，直接用即可）：
@@ -164,6 +169,7 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | 排障 | `kopsc diagnose web` |
 | 后台跑服务 | `kopsc proc nohup ./server` |
 | 等进程退出 | `kopsc proc wait nginx`、`kopsc proc wait --pid 1234 --timeout 30` |
+| 跑 Java 应用 | `kopsc java run app.jar`、`kopsc java run --jdk 17 --print-flags app.jar` |
 | 刷新软件源 | `kopsc pkg refreshindex` |
 
 ## 平台识别
@@ -225,6 +231,7 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | diagnose | [`README.diagnose.md`](README.diagnose.md) |
 | proc | [`README.proc.md`](README.proc.md) |
 | pkg | [`README.pkg.md`](README.pkg.md) |
+| java | [`README.java.md`](README.java.md) |
 
 新分组需要新建 `README.<分组>.md`，并在本文件「命令一览」的表格里加一行链接。
 每条命令至少要写清：**作用**、**实际执行什么**、**示例**；有独有选项时补选项表。

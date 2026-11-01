@@ -14,6 +14,7 @@ import (
 // in-process command implementation.
 type BuiltinRequest struct {
 	Args   []string
+	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
 	Info   platform.Info
@@ -42,6 +43,8 @@ var builtins = map[string]Builtin{
 	"docker.save":        runDockerSave,
 	"docker.stats":       runDockerStats,
 	"docker.stop":        runDockerStop,
+	"java.run":           runJavaRun,
+	"java.run.preview":   runJavaPreview,
 	"net.pids":           runNetPIDs,
 	"net.ports":          runNetPorts,
 	"proc.nohup":         runNohup,
@@ -72,7 +75,7 @@ func Preview(ctx context.Context, plan Plan, w io.Writer) error {
 		return fmt.Errorf("未注册的确认动作 %q", name)
 	}
 	// Build the list in memory first: a target that fails to resolve must not
-	// leave a dangling "将影响:" heading behind.
+	// leave a dangling heading behind.
 	var buf bytes.Buffer
 	if err := fn(ctx, BuiltinRequest{
 		Args:   plan.ExtraArgs,
@@ -83,7 +86,11 @@ func Preview(ctx context.Context, plan Plan, w io.Writer) error {
 	}); err != nil {
 		return err
 	}
-	fmt.Fprintln(w, "将影响:")
+	// Only destructive commands act on a list of objects; other previews (such
+	// as the java command line) already carry their own heading.
+	if plan.Result.Command != nil && plan.Result.Command.RequiresYes {
+		fmt.Fprintln(w, "将影响:")
+	}
 	_, err := w.Write(buf.Bytes())
 	return err
 }

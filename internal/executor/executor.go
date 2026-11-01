@@ -114,6 +114,7 @@ func (p Plan) Run(ctx context.Context, opts Options) error {
 		}
 		return fn(ctx, BuiltinRequest{
 			Args:   p.ExtraArgs,
+			Stdin:  opts.Stdin,
 			Stdout: opts.Stdout,
 			Stderr: opts.Stderr,
 			Info:   p.Result.Info,

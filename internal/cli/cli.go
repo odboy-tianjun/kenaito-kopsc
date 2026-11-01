@@ -221,6 +221,7 @@ var groupDescriptions = map[string]string{
 	"net":    "网络与端口：端口被谁占用、本机监听了哪些端口",
 	"pkg":    "系统软件包：刷新包管理器（dnf/apt/apk/brew/winget）的软件源索引",
 	"proc":   "本机进程：在后台运行命令并写日志，关掉终端也不退出",
+	"java":   "Java 应用：按 JDK 版本自动套用调优参数并前台运行 jar",
 }
 
 // newGroup builds an intermediate command such as `kopsc disk`.
@@ -256,9 +257,19 @@ func variantDisplay(v registry.Variant) string {
 	return strings.Join(v.Argv, " ")
 }
 
+// leafUsage renders the cobra usage line for a leaf command. Commands that
+// already spell out their own arguments (such as `java run <app.jar> [-- 应用参数...]`)
+// keep it as-is; the generic "[-- 透传参数...]" tail would only repeat it.
+func leafUsage(name, usage string) string {
+	if strings.TrimSpace(usage) != "" {
+		return name + " " + usage
+	}
+	return name + " [--dry-run] [-h] [-- 透传参数...]"
+}
+
 func (a *App) newLeaf(cmd *registry.Command, name string) *cobra.Command {
 	leaf := &cobra.Command{
-		Use:                name + " [--dry-run] [-h] [-- 透传参数...]",
+		Use:                leafUsage(name, cmd.Usage),
 		Short:              cmd.Summary,
 		Long:               cmd.Summary + "\n\n动作: " + cmd.Action,
 		DisableFlagParsing: true,
@@ -285,6 +296,15 @@ func (a *App) newLeaf(cmd *registry.Command, name string) *cobra.Command {
 
 			if cmd.RequiresYes && !yes && !dryRun {
 				return a.printConfirmation(cmd, plan)
+			}
+
+			if dryRun {
+				// A command with a preview builtin can show exactly what it
+				// would do (for example the final java command line), so
+				// render that instead of only the builtin's name.
+				if err := executor.Preview(context.Background(), plan, a.Stdout); err != nil {
+					return err
+				}
 			}
 
 			return plan.Run(context.Background(), executor.Options{
@@ -379,11 +399,13 @@ func parseLeafArgs(cmd *registry.Command, args []string) (dryRun, yes bool, extr
 
 func (a *App) printLeafHelp(w io.Writer, cmd *registry.Command) {
 	invocation := cmd.Invocation()
-	argsHint := ""
+	// A command that documents its own arguments already ends with them, so
+	// the generic passthrough tail is only added when there is no Usage.
 	if cmd.Usage != "" {
-		argsHint = " " + cmd.Usage
+		fmt.Fprintf(w, "用法: %s [--dry-run] [-h] [--yes] %s\n\n", invocation, cmd.Usage)
+	} else {
+		fmt.Fprintf(w, "用法: %s [--dry-run] [-h] [--yes] [-- 透传参数...]\n\n", invocation)
 	}
-	fmt.Fprintf(w, "用法: %s [--dry-run] [-h] [--yes]%s [-- 透传参数...]\n\n", invocation, argsHint)
 	fmt.Fprintf(w, "%s\n\n", cmd.Summary)
 	fmt.Fprintf(w, "动作: %s\n\n", cmd.Action)
 	fmt.Fprintf(w, "当前平台: %s\n", resolve.DescribeInfo(a.Info))

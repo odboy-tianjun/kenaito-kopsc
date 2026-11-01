@@ -453,6 +453,35 @@ func Builtin() *Registry {
 			},
 		},
 		{
+			ID:      "java.run",
+			Group:   "java",
+			Summary: "按 JDK 版本套用调优参数并前台运行 Java 应用",
+			Action: "以 kopsc 内置的业界常用调优参数启动 Spring 风格应用：自动识别宿主机的 CPU 与可用内存" +
+				"（容器内以 cgroup 限额为准），堆大小默认取可用内存的 50%；按检测到的 JDK 版本套用对应参数，" +
+				"JDK 8 使用 -Xloggc 组，JDK 9+ 使用 -Xlog: 组；应用参数写在 jar 之后，或用 -- 分隔。" +
+				"前台运行，Ctrl+C 可停止，退出码透传",
+			Usage:          "<app.jar> [-- 应用参数...]",
+			MinArgs:        1,
+			ConfirmBuiltin: "java.run.preview",
+			Variants: []Variant{
+				{
+					Match:   Match{OS: "linux"},
+					Builtin: "java.run",
+					Note:    "Linux 内置实现（/proc 与 cgroup 探测资源）",
+				},
+				{
+					Match:   Match{OS: "darwin"},
+					Builtin: "java.run",
+					Note:    "macOS 内置实现（sysctl 探测内存）",
+				},
+				{
+					Match:   Match{OS: "windows"},
+					Builtin: "java.run",
+					Note:    "Windows 内置实现（wmic 探测内存）",
+				},
+			},
+		},
+		{
 			ID:      "pkg.refreshindex",
 			Group:   "pkg",
 			Summary: "刷新系统包管理器的软件源索引",
