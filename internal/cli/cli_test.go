@@ -73,14 +73,17 @@ func TestLeafHelp(t *testing.T) {
 }
 
 func TestLeafPassesThroughArgs(t *testing.T) {
+	// net.ports is a builtin now, so use a docker command whose argv is fixed
+	// and whose passthrough the dry-run output shows.
 	app, stdout, _ := testApp(centos("docker"))
 
-	code := app.Execute([]string{"net", "ports", "--dry-run", "--", "-l"})
+	code := app.Execute([]string{"docker", "ps", "--dry-run", "--", "--filter", "status=running"})
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
-	if !strings.Contains(stdout.String(), "ss -tulnp -l") {
-		t.Errorf("passthrough args missing:\n%s", stdout.String())
+	out := stdout.String()
+	if !strings.Contains(out, "docker ps") || !strings.Contains(out, "--filter status=running") {
+		t.Errorf("passthrough args missing:\n%s", out)
 	}
 }
 
@@ -384,14 +387,26 @@ func TestDiskUsageAcceptsPathFlagThroughCLI(t *testing.T) {
 	}
 }
 
-func TestDiskUsageRequiresPathThroughCLI(t *testing.T) {
-	app, _, stderr := testApp(centos("docker"))
-
-	if code := app.Execute([]string{"disk", "usage"}); code != 1 {
-		t.Fatalf("exit code = %d, want 1", code)
+func TestDiskUsageDefaultsToCurrentDirectoryThroughCLI(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "payload.bin"), bytes.Repeat([]byte("x"), 2048), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(stderr.String(), "必须提供路径") {
-		t.Errorf("stderr = %s", stderr.String())
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(old) }()
+
+	app, stdout, stderr := testApp(centos("docker"))
+	if code := app.Execute([]string{"disk", "usage"}); code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "payload.bin") {
+		t.Errorf("omitting the path should analyse the current directory:\n%s", stdout.String())
 	}
 }
 

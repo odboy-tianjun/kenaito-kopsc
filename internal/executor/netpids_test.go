@@ -102,12 +102,29 @@ func TestNetPIDsUnixNoMatchIsNotAnError(t *testing.T) {
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	var out bytes.Buffer
-	if err := runNetPIDs(context.Background(), BuiltinRequest{Args: []string{"8080"}, Stdout: &out}); err != nil {
+	var out, errOut bytes.Buffer
+	if err := runNetPIDs(context.Background(), BuiltinRequest{Args: []string{"8080"}, Stdout: &out, Stderr: &errOut}); err != nil {
 		t.Fatalf("no-match should not fail: %v", err)
 	}
 	if out.Len() != 0 {
-		t.Fatalf("expected no output, got %q", out.String())
+		t.Fatalf("expected empty stdout, got %q", out.String())
+	}
+	// The note goes to stderr so scripts parsing stdout are unaffected.
+	if !strings.Contains(errOut.String(), "没有进程占用端口 8080") {
+		t.Fatalf("stderr = %q, want a no-match note", errOut.String())
+	}
+}
+
+func TestReportPIDsSilentWhenSomethingHoldsThePort(t *testing.T) {
+	var out, errOut bytes.Buffer
+	if err := reportPIDs(netPIDsOptions{port: 8080}, []string{"123", "456"}, BuiltinRequest{Stdout: &out, Stderr: &errOut}); err != nil {
+		t.Fatalf("reportPIDs: %v", err)
+	}
+	if out.String() != "123\n456\n" {
+		t.Errorf("stdout = %q", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("stderr should stay empty, got %q", errOut.String())
 	}
 }
 
@@ -184,5 +201,80 @@ func TestProcPIDs(t *testing.T) {
 	}
 	if strings.Join(got, ",") != "4242" {
 		t.Fatalf("pids = %v, want [4242]", got)
+	}
+}
+
+func TestWritePIDFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sub", "port.pid")
+
+	if err := writePIDFile(path, []string{"123", "456"}); err != nil {
+		t.Fatalf("writePIDFile: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Comma-separated on one line so `kill $(cat file)` works.
+	if string(data) != "123,456\n" {
+		t.Fatalf("file = %q, want \"123,456\\n\"", data)
+	}
+
+	// No holder: the file exists but is empty.
+	if err := writePIDFile(path, nil); err != nil {
+		t.Fatalf("writePIDFile(nil): %v", err)
+	}
+	if data, _ := os.ReadFile(path); len(data) != 0 {
+		t.Fatalf("file = %q, want empty", data)
+	}
+}
+
+func TestParseNetPIDsArgsPidFile(t *testing.T) {
+	opts, err := parseNetPIDsArgs([]string{"8080", "--pid-file", "/tmp/p.pid"})
+	if err != nil || opts.port != 8080 || opts.pidFile != "/tmp/p.pid" {
+		t.Fatalf("opts = %+v, err = %v", opts, err)
+	}
+	opts, err = parseNetPIDsArgs([]string{"--pid-file=/tmp/q.pid", "8080"})
+	if err != nil || opts.pidFile != "/tmp/q.pid" {
+		t.Fatalf("opts = %+v, err = %v", opts, err)
+	}
+	if _, err := parseNetPIDsArgs([]string{"8080", "--pid-file"}); err == nil ||
+		!strings.Contains(err.Error(), "--pid-file 缺少文件路径") {
+		t.Fatalf("err = %v, want a missing-path error", err)
+	}
+}
+
+func TestNetPIDsWritesPIDFileThroughCLIPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("lsof fixture is not executable on Windows")
+	}
+	dir := t.TempDir()
+	script := filepath.Join(dir, "lsof")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf '4242\\n'\\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	pidFile := filepath.Join(t.TempDir(), "web.pid")
+	var out, errOut bytes.Buffer
+	if err := runNetPIDs(context.Background(), BuiltinRequest{
+		Args:   []string{"8080", "--pid-file", pidFile},
+		Stdout: &out,
+		Stderr: &errOut,
+	}); err != nil {
+		t.Fatalf("runNetPIDs: %v", err)
+	}
+	if strings.TrimSpace(out.String()) != "4242" {
+		t.Errorf("stdout = %q, want the PID", out.String())
+	}
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatalf("pid file not written: %v", err)
+	}
+	if strings.TrimSpace(string(data)) != "4242" {
+		t.Errorf("pid file = %q", data)
+	}
+	if !strings.Contains(errOut.String(), "PID 已写入") {
+		t.Errorf("stderr = %q, want the write note", errOut.String())
 	}
 }

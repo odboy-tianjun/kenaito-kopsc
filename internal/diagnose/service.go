@@ -121,10 +121,125 @@ func (s *Service) resolve(ctx context.Context, target string, opts Options) (sou
 			strings.TrimSpace(string(res.Stdout)) != "" {
 			return source{kind: "k8s", namespace: ns, context: opts.Context}, nil
 		}
-		return source{}, fmt.Errorf("未找到目标 %q：%v；Kubernetes 命名空间 %s 中也没有该 Pod", target, dockerErr, ns)
+		base := fmt.Errorf("未找到目标 %q：%v；Kubernetes 命名空间 %s 中也没有该 Pod", target, dockerErr, ns)
+		return source{}, s.withCandidates(ctx, base, target, opts)
 	}
 
-	return source{}, fmt.Errorf("未找到目标 %q：%v；同时未安装 kubectl", target, dockerErr)
+	base := fmt.Errorf("未找到目标 %q：%v；同时未安装 kubectl", target, dockerErr)
+	return source{}, s.withCandidates(ctx, base, target, opts)
+}
+
+// withCandidates appends similar names to a "target not found" error, so the
+// user does not have to run docker ps / kubectl get pods to find out that the
+// container is called web-1.
+//
+// When nothing is similar, the few objects that do exist are listed instead —
+// knowing that the only containers are "redis" and "db" is usually enough to
+// spot the typo. With no objects at all the error keeps its original text.
+func (s *Service) withCandidates(ctx context.Context, base error, target string, opts Options) error {
+	all := s.candidateNames(ctx, target, opts)
+
+	var hits, existing []string
+	for _, name := range all {
+		if name.matched {
+			hits = append(hits, name.name)
+		}
+		existing = append(existing, name.name)
+	}
+	if len(hits) > 0 {
+		return fmt.Errorf("%w\n你可能要找的是: %s\n（设置 --kind docker 或 --kind k8s 可缩小查找范围）",
+			base, strings.Join(hits, ", "))
+	}
+	if len(existing) == 0 {
+		return base
+	}
+	return fmt.Errorf("%w\n当前存在的对象: %s\n（可用 kopsc docker psall 或 kubectl get pods 查看详情）",
+		base, strings.Join(existing, ", "))
+}
+
+// nameCandidate is one existing name and whether it resembles the target.
+type nameCandidate struct {
+	name    string
+	matched bool
+}
+
+// candidateNames collects the names of existing Docker containers and Pods,
+// marking those that resemble the target (prefix or substring, ignoring case)
+// and ordering the similar ones first.
+func (s *Service) candidateNames(ctx context.Context, target string, opts Options) []nameCandidate {
+	if opts.Kind == "k8s" {
+		return rankNames(s.podNames(ctx, opts), target)
+	}
+
+	var names []string
+	if program, err := s.dockerProgram(); err == nil {
+		if res, err := s.run(ctx, program, "ps", "-a", "--format", "{{.Names}}"); err == nil {
+			names = append(names, strings.Fields(string(res.Stdout))...)
+		}
+	}
+	if opts.Kind != "docker" {
+		names = append(names, s.podNames(ctx, opts)...)
+	}
+	return rankNames(names, target)
+}
+
+// podNames lists the Pods in the effective namespace.
+func (s *Service) podNames(ctx context.Context, opts Options) []string {
+	if _, err := s.runner.LookPath("kubectl"); err != nil {
+		return nil
+	}
+	ns, _ := s.kubeNamespace(ctx, opts.Context)
+	res, err := s.run(ctx, "kubectl", kubectlArgs(opts.Context, "get", "pods", "-n", ns, "-o", "name")...)
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, field := range strings.Fields(string(res.Stdout)) {
+		names = append(names, strings.TrimPrefix(field, "pod/"))
+	}
+	return names
+}
+
+// rankNames marks the names that resemble target — prefix hits before
+// substring hits, comparison ignoring case — and returns at most maxNames of
+// them, followed by the remaining names so callers can also show what exists
+// when nothing is similar.
+func rankNames(names []string, target string) []nameCandidate {
+	const maxNames = 5
+	lower := strings.ToLower(target)
+
+	var prefixHits, containsHits, others []nameCandidate
+	for _, name := range names {
+		n := strings.ToLower(name)
+		switch {
+		case strings.HasPrefix(n, lower), strings.HasPrefix(lower, n):
+			prefixHits = append(prefixHits, nameCandidate{name: name, matched: true})
+		case strings.Contains(n, lower):
+			containsHits = append(containsHits, nameCandidate{name: name, matched: true})
+		default:
+			others = append(others, nameCandidate{name: name})
+		}
+	}
+
+	hits := append(prefixHits, containsHits...)
+	if len(hits) > maxNames {
+		hits = hits[:maxNames]
+	}
+	if len(others) > maxNames {
+		others = others[:maxNames]
+	}
+	return append(hits, others...)
+}
+
+// matchNames is rankNames reduced to the similar names only.
+func matchNames(names []string, target string) []string {
+	var hits []string
+	for _, c := range rankNames(names, target) {
+		if c.matched {
+			hits = append(hits, c.name)
+		}
+	}
+	return hits
 }
 
 func (s *Service) dockerProgram() (string, error) {

@@ -125,24 +125,26 @@ func TestResolveBuiltin(t *testing.T) {
 			wantIdx:  5,
 		},
 		{
-			name:     "linux listens with ss",
+			// net.ports is now a builtin: the resolver picks the platform
+			// variant and the builtin renders the table (or --raw output).
+			name:     "linux listens with the builtin",
 			id:       "net.ports",
 			info:     env("linux", "amd64", "centos", []string{"rhel"}),
-			wantArgv: []string{"ss", "-tulnp"},
+			wantArgv: nil,
 			wantIdx:  0,
 		},
 		{
-			name:     "darwin listens with lsof",
+			name:     "darwin listens with the builtin",
 			id:       "net.ports",
 			info:     env("darwin", "amd64", "", nil),
-			wantArgv: []string{"lsof", "-iTCP", "-sTCP:LISTEN", "-nP"},
+			wantArgv: nil,
 			wantIdx:  1,
 		},
 		{
-			name:     "windows listens with netstat",
+			name:     "windows listens with the builtin",
 			id:       "net.ports",
 			info:     env("windows", "amd64", "", nil),
-			wantArgv: []string{"netstat", "-ano"},
+			wantArgv: nil,
 			wantIdx:  2,
 		},
 	}

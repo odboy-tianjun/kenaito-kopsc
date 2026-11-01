@@ -771,3 +771,89 @@ func registryVariantBuiltinFor(name string) registry.Variant {
 func resolveResultWithVariant(v registry.Variant) resolve.Result {
 	return resolve.Result{Command: &registry.Command{ID: "docker.test"}, Variant: v}
 }
+
+// TestListImagesParsesRealDockerOutput pins the parser against output captured
+// from a real Docker Desktop: tab-separated fields including the digest column.
+func TestListImagesParsesRealDockerOutput(t *testing.T) {
+	payload := "IMAGE ID\tREPOSITORY\tTAG\tDIGEST\tCREATED AT\tSIZE\n" +
+		"b175f8a4c2a5\truntime-demo\tlatest\tsha256:b175f8\t2026-10-23 11:48:04 +0800 CST\t23.3MB\n" +
+		"d6bfb6b28318\tkenaito-conf-web\tlatest\tsha256:d6bfb6\t2026-10-21 15:37:51 +0800 CST\t75.4MB\n" +
+		"e0b0e5c0a111\t<none>\t<none>\t\t2026-10-20 10:00:00 +0800 CST\t1.12GB\n"
+	logPath := fakeRuntime(t, payload)
+
+	refs, err := listImages(context.Background())
+	if err != nil {
+		t.Fatalf("listImages: %v", err)
+	}
+	if len(refs) != 3 {
+		t.Fatalf("parsed %d rows, want 3: %+v", len(refs), refs)
+	}
+
+	got := map[string]imageRef{}
+	for _, r := range refs {
+		got[r.ID] = r
+	}
+	// The digest column is kept apart: the name must stay repository:tag, or
+	// `docker save alpine:3.20` could never match what users type.
+	if r := got["b175f8a4c2a5"]; r.Name != "runtime-demo:latest" {
+		t.Errorf("named image = %q, want runtime-demo:latest", r.Name)
+	}
+	if r := got["b175f8a4c2a5"]; r.Digest != "sha256:b175f8" {
+		t.Errorf("digest not captured: %+v", r)
+	}
+	if r := got["b175f8a4c2a5"]; r.Size != "23.3MB" || r.CreatedAt == "" {
+		t.Errorf("metadata not parsed: %+v", r)
+	}
+	// "<none>" repository rows are untagged and carry no name.
+	if r := got["e0b0e5c0a111"]; r.Name != "" {
+		t.Errorf("untagged image name = %q, want empty", r.Name)
+	}
+
+	// Asking for an image that only exists by another name reports it missing.
+	if _, err := resolveImageRef(context.Background(), "alpine:3.20"); err == nil ||
+		!strings.Contains(err.Error(), "本地没有镜像") {
+		t.Errorf("err = %v, want not-found for an unlisted image", err)
+	}
+	_ = logPath
+}
+
+// TestResolveImageRefByTagWithDigest is the regression for "本地有 alpine:3.20
+// 却报本地没有镜像": docker prints a digest for most images, and it must not
+// leak into the resolved name.
+func TestResolveImageRefByTagWithDigest(t *testing.T) {
+	payload := "IMAGE ID\tREPOSITORY\tTAG\tDIGEST\tCREATED AT\tSIZE\n" +
+		"7dcddc01f13b\tmysql\t8.0\t\t\n" +
+		"d9e853e87e55\talpine\t3.20\tsha256:d9e853e87e55\t2026-04-17 07:53:26 +0800 CST\t12.2MB\n"
+	fakeRuntime(t, payload)
+
+	ref, err := resolveImageRef(context.Background(), "alpine:3.20")
+	if err != nil {
+		t.Fatalf("alpine:3.20 exists locally but was not found: %v", err)
+	}
+	if ref.Name != "alpine:3.20" {
+		t.Fatalf("resolved name = %q, want alpine:3.20", ref.Name)
+	}
+
+	// The image is also reachable by ID once its name is clean.
+	byID, err := resolveImageRef(context.Background(), "d9e853e87e55")
+	if err != nil {
+		t.Fatalf("resolve by ID: %v", err)
+	}
+	if byID.Name != "alpine:3.20" {
+		t.Errorf("ID resolved to %q, want alpine:3.20", byID.Name)
+	}
+}
+
+func TestFormatImageNameIgnoresDigest(t *testing.T) {
+	cases := []struct{ repo, tag, want string }{
+		{"alpine", "3.20", "alpine:3.20"},
+		{"alpine", "latest", "alpine:latest"},
+		{"registry:5000/team/app", "1.0", "registry:5000/team/app:1.0"},
+		{"<none>", "<none>", ""},
+	}
+	for _, tc := range cases {
+		if got := formatImageName(tc.repo, tc.tag); got != tc.want {
+			t.Errorf("formatImageName(%q, %q) = %q, want %q", tc.repo, tc.tag, got, tc.want)
+		}
+	}
+}

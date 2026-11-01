@@ -43,6 +43,7 @@ var builtins = map[string]Builtin{
 	"docker.stats":       runDockerStats,
 	"docker.stop":        runDockerStop,
 	"net.pids":           runNetPIDs,
+	"net.ports":          runNetPorts,
 	"proc.nohup":         runNohup,
 }
 

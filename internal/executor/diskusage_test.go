@@ -102,10 +102,25 @@ func TestDiskUsageAcceptsPathFlag(t *testing.T) {
 	}
 }
 
-func TestDiskUsageRequiresPath(t *testing.T) {
-	_, err := runDisk(t)
-	if err == nil || !strings.Contains(err.Error(), "必须提供路径") {
-		t.Fatalf("err = %v, want missing-path error", err)
+func TestDiskUsageDefaultsToCurrentDirectory(t *testing.T) {
+	root := diskFixture(t)
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(old) }()
+
+	out, err := runDisk(t)
+	if err != nil {
+		t.Fatalf("omitting the path should analyse the current directory: %v", err)
+	}
+	for _, want := range []string{"big", "direct.txt", "总计 ."} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
 	}
 }
 
@@ -194,5 +209,104 @@ func TestPlanBuiltinDryRunDoesNotExecute(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "内置实现") {
 		t.Errorf("dry-run output lacks builtin note:\n%s", out.String())
+	}
+}
+
+func TestParseDiskUsageDepth(t *testing.T) {
+	tests := []struct {
+		args      []string
+		wantPath  string
+		wantDepth int
+		wantErr   string
+	}{
+		{[]string{"/var"}, "/var", 1, ""},
+		{[]string{"--depth", "2", "/var"}, "/var", 2, ""},
+		{[]string{"-d", "3", "/var"}, "/var", 3, ""},
+		{[]string{"--depth=2", "/var"}, "/var", 2, ""},
+		{[]string{"--depth", "2"}, ".", 2, ""},
+		{[]string{"--depth"}, "", 0, "--depth 缺少层数"},
+		{[]string{"--depth", "0", "/var"}, "", 0, "--depth 需要大于 0"},
+		{[]string{"--depth=x", "/var"}, "", 0, "--depth 需要大于 0"},
+	}
+	for _, tc := range tests {
+		opts, err := parseDiskUsageOptions(tc.args)
+		if tc.wantErr != "" {
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("args %v: err = %v, want %q", tc.args, err, tc.wantErr)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("args %v: %v", tc.args, err)
+			continue
+		}
+		if opts.path != tc.wantPath || opts.depth != tc.wantDepth {
+			t.Errorf("args %v: got %+v, want path=%q depth=%d", tc.args, opts, tc.wantPath, tc.wantDepth)
+		}
+	}
+}
+
+func TestDiskUsageDepthTwoListsNestedFiles(t *testing.T) {
+	root := t.TempDir()
+	writeSizedFile(t, filepath.Join(root, "a", "deep", "x.bin"), 4096)
+	writeSizedFile(t, filepath.Join(root, "a", "y.bin"), 2048)
+	writeSizedFile(t, filepath.Join(root, "top.txt"), 1024)
+
+	// depth 1: only "a" (summed) and top.txt.
+	out, err := runDisk(t, root)
+	if err != nil {
+		t.Fatalf("depth 1: %v", err)
+	}
+	if !strings.Contains(out, filepath.Join("a")) || strings.Contains(out, "x.bin") {
+		t.Fatalf("depth 1 should stop at direct children:\n%s", out)
+	}
+
+	// depth 2: a's children show up individually.
+	out, err = runDisk(t, root, "--depth", "2")
+	if err != nil {
+		t.Fatalf("depth 2: %v", err)
+	}
+	for _, want := range []string{"y.bin", "deep"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("depth 2 output missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "x.bin") {
+		t.Errorf("depth 2 must not descend into deep/:\n%s", out)
+	}
+
+	// depth 3 reaches the nested file.
+	out, err = runDisk(t, root, "--depth", "3")
+	if err != nil {
+		t.Fatalf("depth 3: %v", err)
+	}
+	if !strings.Contains(out, "x.bin") {
+		t.Errorf("depth 3 output missing x.bin:\n%s", out)
+	}
+}
+
+func TestDiskUsageDepthKeepsTotalAccurate(t *testing.T) {
+	root := t.TempDir()
+	writeSizedFile(t, filepath.Join(root, "a", "deep", "x.bin"), 4096)
+	writeSizedFile(t, filepath.Join(root, "a", "y.bin"), 2048)
+	writeSizedFile(t, filepath.Join(root, "top.txt"), 1024)
+
+	// Every file is counted once no matter the depth, so the total is the same
+	// 7168 bytes (7.0K) as depth 1 — deeper listing must not double count.
+	for _, depth := range []string{"1", "2", "3"} {
+		out, err := runDisk(t, root, "--depth", depth)
+		if err != nil {
+			t.Fatalf("depth %s: %v", depth, err)
+		}
+		// The total line is "7.0K     总计 <root>".
+		var total string
+		for _, line := range strings.Split(out, "\n") {
+			if strings.Contains(line, "总计") {
+				total = strings.Fields(line)[0]
+			}
+		}
+		if total != "7.0K" {
+			t.Errorf("depth %s total = %q, want 7.0K", depth, total)
+		}
 	}
 }

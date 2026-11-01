@@ -27,56 +27,100 @@ var pidPattern = regexp.MustCompile(`pid=(\d+)`)
 //   - macOS:   lsof (the system ships it; no /proc fallback)
 //   - Windows: netstat -ano
 func runNetPIDs(ctx context.Context, req BuiltinRequest) error {
-	port, err := parsePortArgs(req.Args)
+	opts, err := parseNetPIDsArgs(req.Args)
 	if err != nil {
 		return err
 	}
+	port := opts.port
 
+	var pids []string
 	if runtime.GOOS == "windows" {
-		return netPIDsWindows(ctx, port, req)
+		pids, err = windowsPIDs(ctx, port)
+	} else {
+		pids, err = unixPIDs(ctx, port)
 	}
-	return netPIDsUnix(ctx, port, req)
+	if err != nil {
+		return err
+	}
+	return reportPIDs(opts, pids, req)
+}
+
+// netPIDsOptions are the parsed arguments of `kopsc net pids`.
+type netPIDsOptions struct {
+	port    int
+	pidFile string // --pid-file: also write the PIDs to this file
 }
 
 func parsePortArgs(args []string) (int, error) {
+	opts, err := parseNetPIDsArgs(args)
+	return opts.port, err
+}
+
+func parseNetPIDsArgs(args []string) (netPIDsOptions, error) {
+	var opts netPIDsOptions
 	var value string
+
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
 		case arg == "--port":
 			if i+1 >= len(args) {
-				return 0, fmt.Errorf("--port 缺少端口号")
+				return opts, fmt.Errorf("--port 缺少端口号")
 			}
 			i++
 			value = args[i]
 		case strings.HasPrefix(arg, "--port="):
 			value = strings.TrimPrefix(arg, "--port=")
+		case arg == "--pid-file" || arg == "--pidfile":
+			if i+1 >= len(args) {
+				return opts, fmt.Errorf("--pid-file 缺少文件路径，例如 --pid-file /tmp/port.pid")
+			}
+			i++
+			opts.pidFile = args[i]
+		case strings.HasPrefix(arg, "--pid-file="):
+			opts.pidFile = strings.TrimPrefix(arg, "--pid-file=")
+		case strings.HasPrefix(arg, "--pidfile="):
+			opts.pidFile = strings.TrimPrefix(arg, "--pidfile=")
 		case strings.HasPrefix(arg, "-") && arg != "-":
-			return 0, fmt.Errorf("未知选项 %q", arg)
+			return opts, fmt.Errorf("未知选项 %q", arg)
 		default:
 			if value != "" {
-				return 0, fmt.Errorf("一次只支持一个端口，收到多个参数")
+				return opts, fmt.Errorf("一次只支持一个端口，收到多个参数")
 			}
 			value = arg
 		}
 	}
 	if value == "" {
-		return 0, fmt.Errorf("必须提供端口，例如 kopsc net pids 8080")
+		return opts, fmt.Errorf("必须提供端口，例如 kopsc net pids 8080")
 	}
 
 	port, err := strconv.Atoi(value)
 	if err != nil || port < 1 || port > 65535 {
-		return 0, fmt.Errorf("端口必须是 1-65535 的整数，收到 %q", value)
+		return opts, fmt.Errorf("端口必须是 1-65535 的整数，收到 %q", value)
 	}
-	return port, nil
+	opts.port = port
+	if opts.pidFile == "" && strings.HasPrefix(args[len(args)-1], "--pid-file=") {
+		return opts, errors.New("--pid-file 缺少文件路径，例如 --pid-file /tmp/port.pid")
+	}
+	return opts, nil
 }
 
-func netPIDsUnix(ctx context.Context, port int, req BuiltinRequest) error {
-	pids, err := unixPIDs(ctx, port)
-	if err != nil {
-		return err
+// writePIDFile writes the PIDs as one comma-separated line, so the file works
+// with `kill $(cat file)` and is empty when nothing holds the port. The
+// location is reported on stderr to keep stdout machine-readable.
+func writePIDFile(path string, pids []string) error {
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("创建目录 %q 失败: %w", dir, err)
+		}
 	}
-	writePIDs(req.Stdout, pids)
+	content := strings.Join(pids, ",") + "\n"
+	if len(pids) == 0 {
+		content = ""
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("写入 %q 失败: %w", path, err)
+	}
 	return nil
 }
 
@@ -254,6 +298,15 @@ func procPIDs(port int, procRoot string) ([]string, error) {
 }
 
 func netPIDsWindows(ctx context.Context, port int, req BuiltinRequest) error {
+	pids, err := windowsPIDs(ctx, port)
+	if err != nil {
+		return err
+	}
+	return reportPIDs(netPIDsOptions{port: port}, pids, req)
+}
+
+// windowsPIDs parses `netstat -ano` for the PIDs holding port.
+func windowsPIDs(ctx context.Context, port int) ([]string, error) {
 	cmd := exec.CommandContext(ctx, "netstat", "-ano")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -264,11 +317,9 @@ func netPIDsWindows(ctx context.Context, port int, req BuiltinRequest) error {
 		if message == "" {
 			message = err.Error()
 		}
-		return fmt.Errorf("netstat -ano 失败: %s", message)
+		return nil, fmt.Errorf("netstat -ano 失败: %s", message)
 	}
-
-	writePIDs(req.Stdout, parseNetstatPIDs(stdout.String(), port))
-	return nil
+	return parseNetstatPIDs(stdout.String(), port), nil
 }
 
 // parseNetstatPIDs extracts unique owning PIDs for a local port from
@@ -324,6 +375,25 @@ func normalizePIDs(pids []string) []string {
 		return a < b
 	})
 	return out
+}
+
+// reportPIDs writes the PIDs to stdout, one per line, and keeps stdout empty
+// when nothing holds the port. The "nothing is listening" note goes to stderr,
+// so scripts reading stdout see no change while humans are told what happened.
+func reportPIDs(opts netPIDsOptions, pids []string, req BuiltinRequest) error {
+	writePIDs(req.Stdout, pids)
+	if len(pids) == 0 && req.Stderr != nil {
+		fmt.Fprintf(req.Stderr, "没有进程占用端口 %d\n", opts.port)
+	}
+	if opts.pidFile != "" {
+		if err := writePIDFile(opts.pidFile, pids); err != nil {
+			return err
+		}
+		if req.Stderr != nil {
+			fmt.Fprintf(req.Stderr, "PID 已写入 %s\n", opts.pidFile)
+		}
+	}
+	return nil
 }
 
 func writePIDs(w interface{ Write([]byte) (int, error) }, pids []string) {

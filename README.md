@@ -67,11 +67,13 @@ kopsc diagnose web                 # 自动识别 Docker 容器或 K8s Pod，给
 kopsc diagnose api-0 -n prod       # K8s：本命令里 -n 表示 namespace
 kopsc diagnose api-0 --kind k8s --context staging
 kopsc diagnose web --lines 200 --no-events
+# 目标名写错时不用自己查：kopsc 会提示「你可能要找的是: web-1, web-2」
 
 kopsc net pids 8080                  # 等价 lsof -ti:8080，输出占用端口的 PID
-kopsc net ports                      # 列出监听中的端口
+kopsc net ports                      # 列出监听中的端口（统一表格，--raw 看原始输出）
 
-kopsc disk usage /var                # 磁盘占用排行（du -x --max-depth=1 -h | sort -hr 的跨平台版）
+kopsc disk usage                     # 当前目录的占用排行（路径可省略）
+kopsc disk usage /var --depth 2      # 下钻一层（du -x --max-depth=2 -h | sort -hr 的跨平台版）
 kopsc disk usage --path /var         # 同上，用命名参数指定路径
 kopsc disk usage /var --dry-run      # 预览（内置命令同样支持）
 kopsc proc nohup ./server            # 后台运行命令，输出写日志（等价 nohup ./server > server.out 2>&1 &）
@@ -96,8 +98,10 @@ $ kopsc disk usage /var
 总计      2.0G     /var
 ```
 
-- 路径**必填**：位置参数（`/var`）或 `--path /var`、`--path=/var` 均可，一次一个。
-- 统计每个直接子项：普通文件按自身大小，目录递归累计其下普通文件的大小。
+- 路径**可省略**，缺省为当前目录；也可用位置参数（`/var`）或 `--path /var`、`--path=/var`，一次一个。
+- `--depth N`（`-d N` / `--depth=N`）控制列出到第几层，默认 1（只看直接子项）；
+  `--depth 2` 会下钻一层，未下钻的目录仍按递归大小算。
+- 统计每个条目：普通文件按自身大小，目录递归累计其下普通文件的大小；每个文件只计一次，合计不会因加深度而重复。
 - 不跟随符号链接；Unix 上通过设备号实现 `-x`（不跨文件系统），Windows 上不跟随
   reparse point，目录遍历本身不会跨越卷。
 - 输出按大小降序，大小采用与 `du -h` 相同的二进制单位（1.0K、1.5M、2.0G）。
@@ -235,13 +239,19 @@ Pending（结合 FailedScheduling/FailedMount 事件）、Evicted 等。
 
 ### 端口占用查询（net.pids）
 
-`kopsc net pids <端口>` 等价 `lsof -ti:<端口>`：输出占用该端口的进程 PID，每行一个、升序、去重；没有进程占用时无输出并正常退出。
+`kopsc net pids <端口>` 等价 `lsof -ti:<端口>`：输出占用该端口的进程 PID，每行一个、升序、去重。
 
 ```bash
 kopsc net pids 8080
 kopsc net pids --port 8080
+kopsc net pids 8080 --pid-file /tmp/web.pid   # 同时写出逗号分隔的 PID
 kopsc net pids 8080 --dry-run
 ```
+
+- 没有进程占用时 **stdout 仍为空**、退出码仍为 0，但会在 stderr 说明「没有进程占用端口 N」，
+  避免命令行下对着空输出发懵；脚本读 stdout 不受影响。
+- `--pid-file <路径>`：把 PID 以逗号分隔写进文件（如 `123,456`），无占用时写空文件，
+  便于 `kill $(cat web.pid)`；写完会在 stderr 提示位置。
 
 底层按平台自动选择，但对外的命令与输出保持一致：
 
@@ -255,6 +265,23 @@ kopsc net pids 8080 --dry-run
 - `lsof` 无匹配时退出码为 1 且无输出，kopsc 视为“没有进程占用”，返回 0。
 - 只读命令，不需要 `--yes`。
 
+### 监听端口（net.ports）
+
+`kopsc net ports` 列出本机正在监听的端口，**默认输出跨平台一致的表格**（按端口升序）：
+
+```text
+$ kopsc net ports
+端口    协议  地址         PID    进程
+22      TCP   0.0.0.0      901    sshd
+6379    TCP   127.0.0.1    1500   redis-server
+53      UDP   0.0.0.0      -      -
+```
+
+- 三个平台底层分别使用 `ss -tulnp`（Linux）、`lsof -iTCP -sTCP:LISTEN -nP`（macOS）、
+  `netstat -ano`（Windows），kopsc 解析后统一成同一张表；取不到属主时显示 `-`。
+- `--raw` 保留平台原生命令的原始输出，供依赖原生格式的脚本使用。
+- 没有监听端口时 stdout 为空，stderr 提示「没有正在监听的端口」。
+
 ### 其它
 
 | 命令 | 说明 | 平台变体 |
@@ -262,7 +289,7 @@ kopsc net pids 8080 --dry-run
 | `diagnose` | 容器/Pod 状态根因诊断（自动识别 Docker 与 Kubernetes） | Linux/macOS/Windows 均使用 kopsc 内置实现 |
 | `net.pids` | 查找占用指定端口的进程 PID（等价 `lsof -ti:<端口>`） | Linux `lsof` → `ss` → `/proc`；macOS `lsof`；Windows `netstat -ano`。三平台命令与输出一致（PID 升序、每行一个） |
 | `disk.usage` | 目录占用排行（等价 `du -x --max-depth=1 -h <路径> \| sort -hr`） | Linux/macOS/Windows 均使用 kopsc 内置实现，保证输出一致 |
-| `net.ports` | 列出监听中的端口 | Linux `ss -tulnp`、macOS `lsof -iTCP -sTCP:LISTEN -nP`、Windows `netstat -ano` |
+| `net.ports` | 列出监听中的端口（默认表格，`--raw` 保留原生输出） | Linux `ss -tulnp`、macOS `lsof -iTCP -sTCP:LISTEN -nP`、Windows `netstat -ano`，均由 kopsc 解析为统一表格 |
 | `pkg.refreshindex` | 刷新包管理器索引 | centos `dnf makecache`、ID_LIKE rhel/fedora `dnf makecache`、ID_LIKE debian/ubuntu `apt-get update`、alpine `apk update`、macOS `brew update`、Windows `winget source update` |
 | `proc.nohup` | 后台运行命令，输出写入日志（等价 `nohup <命令> > output.log 2>&1 &`） | Linux/macOS 内置实现（新会话 + 日志追加）、Windows 内置实现（`DETACHED_PROCESS` + 日志追加） |
 

@@ -325,8 +325,9 @@ func Builtin() *Registry {
 			Group:   "disk",
 			Summary: "列出目录下各直接子项的占用空间，按大小降序",
 			Action: "等价于 du -x --max-depth=1 -h <路径> | sort -hr：统计每个直接子项（文件或目录递归）的占用，" +
-				"不跨越文件系统边界，末尾输出该路径的合计。路径必填，可作位置参数或用 --path 指定；" +
+				"不跨越文件系统边界，末尾输出该路径的合计。路径可省略（默认当前目录），也可作位置参数或用 --path 指定；" +
 				"由于 Windows 没有等价的 du/sort，这里使用 kopsc 内置实现以保证三平台输出一致",
+			Usage: "[路径]",
 			Variants: []Variant{
 				{
 					Match:   Match{OS: "linux"},
@@ -373,22 +374,24 @@ func Builtin() *Registry {
 		{
 			ID:      "net.ports",
 			Group:   "net",
-			Summary: "列出本机正在监听的 TCP/UDP 端口",
-			Action:  "以只读方式列出监听中的套接字及持有进程",
-			Variants: []Variant{{
-				Match: Match{OS: "linux"},
-				Argv:  []string{"ss", "-tulnp"},
-				Note:  "Linux 使用 iproute2 的 ss",
-			},
+			Summary: "列出本机正在监听的端口（表格）",
+			Action: "只读：输出「端口 / 协议 / 地址 / PID / 进程」，按端口升序，三个平台格式一致；" +
+				"--raw 保留平台原生命令（Linux ss -tulnp、macOS lsof、Windows netstat -ano）的原始输出",
+			Variants: []Variant{
 				{
-					Match: Match{OS: "darwin"},
-					Argv:  []string{"lsof", "-iTCP", "-sTCP:LISTEN", "-nP"},
-					Note:  "macOS 使用 lsof",
+					Match:   Match{OS: "linux"},
+					Builtin: "net.ports",
+					Note:    "Linux 内置实现（ss -tulnp 解析为表格）",
 				},
 				{
-					Match: Match{OS: "windows"},
-					Argv:  []string{"netstat", "-ano"},
-					Note:  "Windows 使用 netstat",
+					Match:   Match{OS: "darwin"},
+					Builtin: "net.ports",
+					Note:    "macOS 内置实现（lsof 解析为表格）",
+				},
+				{
+					Match:   Match{OS: "windows"},
+					Builtin: "net.ports",
+					Note:    "Windows 内置实现（netstat -ano 解析为表格）",
 				},
 			},
 		},

@@ -74,6 +74,7 @@ type imageRef struct {
 	ID         string // image ID, e.g. "sha256:abc..."
 	CreatedAt  string // human-readable creation time, as docker lists it
 	Size       string // human-readable size, as docker lists it
+	Digest     string // content digest, e.g. "sha256:abc..."; may be empty
 	Repository string
 	Tag        string
 }
@@ -92,10 +93,12 @@ func listImages(ctx context.Context) ([]imageRef, error) {
 
 	var refs []imageRef
 	for _, line := range splitLines(out) {
-		if strings.HasPrefix(line, "REPOSITORY") {
+		fields := strings.Split(line, "\t")
+		// With kopsc's own --format the header starts with "IMAGE ID", while
+		// docker's default header starts with "REPOSITORY"; skip either.
+		if isImageHeader(line, fields) {
 			continue
 		}
-		fields := strings.Split(line, "\t")
 		ref := imageRef{ID: strings.TrimSpace(fields[0])}
 		if len(fields) >= 3 {
 			repo, tag := strings.TrimSpace(fields[1]), strings.TrimSpace(fields[2])
@@ -111,25 +114,40 @@ func listImages(ctx context.Context) ([]imageRef, error) {
 			}
 			ref.Repository = repo
 			ref.Tag = tag
-			ref.Name = formatImageName(repo, tag, digest)
+			ref.Digest = digest
+			ref.Name = formatImageName(repo, tag)
 		}
 		refs = append(refs, ref)
 	}
 	return refs, nil
 }
 
-// formatImageName renders repository[:tag][@digest]. "<none>" is how docker
-// groups untagged images.
-func formatImageName(repo, tag, digest string) string {
+// isImageHeader reports whether a line is docker's column header rather than
+// an image row. Headers never carry a real 12-character hex ID.
+func isImageHeader(line string, fields []string) bool {
+	if strings.HasPrefix(line, "REPOSITORY") || strings.HasPrefix(line, "IMAGE ID") {
+		return true
+	}
+	if len(fields) == 0 {
+		return false
+	}
+	return !looksLikeImageID(fields[0])
+}
+
+// formatImageName renders repository[:tag]. "<none>" is how docker groups
+// untagged images.
+//
+// The digest is deliberately not part of the name: `docker save` and friends
+// are addressed by repository:tag (alpine:3.20), and appending "@sha256:..." —
+// which `docker images --format {{.Digest}}` prints for most pulled images —
+// made every such image impossible to look up by the name users type.
+func formatImageName(repo, tag string) string {
 	if repo == "<none>" {
 		return ""
 	}
 	name := repo
 	if tag != "" && tag != "<none>" {
 		name += ":" + tag
-	}
-	if digest != "" && digest != "<none>" {
-		name += "@" + digest
 	}
 	return name
 }
