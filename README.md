@@ -50,10 +50,19 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
 
 ```bash
 kopsc docker ps                   # 列出运行中的容器
+kopsc docker ps --filter name=web # 过滤：只看名字含 web 的容器
 kopsc docker psall                # 含已停止的容器
+kopsc docker images               # 列出本地镜像（不知道有什么镜像时先看这个）
+kopsc docker inspect web          # 查看容器完整配置（JSON）
+kopsc docker pull nginx:1.25      # 拉取镜像
+kopsc docker tag web myorg/web:1.0  # 给镜像打一个可读的标签
+kopsc docker cp web:/etc/nginx nginx.bak   # 把容器内目录复制到主机
 kopsc docker logs -f web          # 查看日志（容器名必填，选项可透传）
 kopsc docker exec web sh          # 进入容器（默认就是交互模式，无需 -it）
 kopsc docker compose up           # 启动 Compose 服务
+kopsc docker clearsafe            # 日常清理：停掉的容器、未用网络、悬空镜像（推荐）
+kopsc docker pruneimages          # 只清悬空镜像
+kopsc docker prunecontainers      # 只清已停止的容器
 kopsc docker clearall --yes       # 深度清理（破坏性命令，必须显式 --yes）
 kopsc docker save alpine:3.20     # 自动保存为 alpine_3.20.tar（传镜像 ID 会先解析出名称）
 kopsc docker load alpine_3.20.tar # 等价 docker load < alpine_3.20.tar
@@ -62,6 +71,8 @@ kopsc docker clearsafe            # 直接执行当前平台对应的清理命�
 kopsc docker clearsafe --dry-run  # 只打印将执行的命令与判定依据
 kopsc docker clearsafe -h         # 该意图的说明、当前平台命中结果与选项
 kopsc docker clearsafe -- --filter until=24h   # -- 之后的参数原样透传给底层命令
+
+kopsc pkg refreshindex             # 刷新包管理器索引（dnf/apt/apk/brew/winget，按平台自动选）
 
 kopsc diagnose web                 # 自动识别 Docker 容器或 K8s Pod，给出根因
 kopsc diagnose api-0 -n prod       # K8s：本命令里 -n 表示 namespace
@@ -86,29 +97,6 @@ kopsc platform                    # 探测到的 OS/ARCH/发行版/运行时
 kopsc version                     # 版本与平台
 ```
 
-### 磁盘占用排行（disk.usage）
-
-`kopsc disk usage <路径>` 等价于 `du -x --max-depth=1 -h <路径> | sort -hr`，但由 kopsc
-内置实现，因此 Linux、macOS、Windows 输出完全一致，不依赖 `du`、`sort` 或 PowerShell：
-
-```text
-$ kopsc disk usage /var
-1.2G     /var/lib
-800.0M   /var/cache
-4.0K     /var/tmp
-0        /var/opt
-总计      2.0G     /var
-```
-
-- 路径**可省略**，缺省为当前目录；也可用位置参数（`/var`）或 `--path /var`、`--path=/var`，一次一个。
-- `--depth N`（`-d N` / `--depth=N`）控制列出到第几层，默认 1（只看直接子项）；
-  `--depth 2` 会下钻一层，未下钻的目录仍按递归大小算。
-- 统计每个条目：普通文件按自身大小，目录递归累计其下普通文件的大小；每个文件只计一次，合计不会因加深度而重复。
-- 不跟随符号链接；Unix 上通过设备号实现 `-x`（不跨文件系统），Windows 上不跟随
-  reparse point，目录遍历本身不会跨越卷。
-- 输出按大小降序，大小采用与 `du -h` 相同的二进制单位（1.0K、1.5M、2.0G）。
-- 末尾输出该路径的合计行。
-
 ### 选项解析规则
 
 叶子命令禁用了 cobra 的 flag 解析，自行处理：
@@ -122,206 +110,58 @@ $ kopsc disk usage /var
 | `--` | 其后的所有参数原样透传给底层命令（并全部计入位置参数） |
 | 其它任何参数 | 原样透传给底层命令（包括未知 flag） |
 
+例外（这些命令会对参数做额外解析，写错会报错而不是透传）：
+
+| 命令 | 例外 |
+| --- | --- |
+| `docker exec` | 容器名之后的参数一律作为容器内命令；显式写 `-i`/`-t`/`-it` 会报错（已默认交互） |
+| `docker rm` / `docker rmi` | 不接受 `-f`/`--force`，强删请用 `--yes` |
+| `docker logs` | `--since`/`--grep`/`--save` 是 kopsc 选项，须写在容器名之前 |
+| `docker save` / `docker rmi` | 目标除了名称，还接受 ID、`sha256:ID` 或唯一 ID 前缀 |
+| `proc nohup` | kopsc 选项（`-o`/`-C`/`-E`/`-q`/`-w`）须写在要运行的命令之前 |
+| `disk usage` | `--path`/`--depth` 为 kopsc 选项，不是 `du` 的参数 |
+
 因此底层命令的 flag 不会与 kopsc 自身的选项冲突。
 
 需要容器名/镜像名的命令会做必填校验（例如 `kopsc docker logs` 缺容器名时直接报错，
 并给出 `kopsc docker logs <容器>` 的用法），避免把参数错误留给底层命令才发现。
 
-## 内置命令
+## 命令一览
 
-### Docker（`kopsc docker <子命令>`）
+kopsc 的命令按用途分组，每组的完整说明（命令表、选项、示例）在单独的文档里：
 
-| 分组 | 命令 |
-| --- | --- |
-| 只读 | `ps`、`psall`、`images`、`stats`、`df`、`info`、`version`、`logs`、`inspect`、`networks`、`volumes` |
-| 生命周期 | `start`、`stop`、`restart`、`rm`、`rmi`、`exec`、`pull`、`tag`、`save`、`load`、`cp` |
-| 清理 | `clearsafe`、`pruneimages`、`prunecontainers`、`prunenets`、`prunebuilder`、`prunevolumes`、`clearall` |
-| Compose | `compose up`、`compose down`、`compose ps`、`compose logs` |
-
-- 所有 Docker 命令在三个平台都调用 `docker`（macOS / Windows 上即 Docker Desktop）。
-- `logs`、`inspect`、`start`、`stop`、`restart`、`rm`、`rmi`、`exec`、`pull`、`tag`、`save`、`load`、`cp`
-  需要位置参数，缺失时直接报错并给出用法。
-- 破坏性命令是 `rm`、`rmi`、`clearall`（`system prune -a -f`）与 `prunevolumes`（`volume prune -f`）：
-  未带 `--yes` 时先列出将删除的对象、再打印将执行的命令，并以退出码 2 结束。
-- `docker compose` 对应 Compose v2。
-- `docker clearsafe` 的安全契约：只加 `-f` 以便无人值守执行，**不**加 `-a`（不清理全部未使用镜像），
-  **不**加 `--volumes`（不删除卷），仅清理停止的容器、未使用的网络与悬空镜像。
-
-### 镜像导出与导入（docker save / docker load）
-
-`kopsc docker save <镜像名|镜像ID>` 等价于 `docker save <镜像> -o <镜像名>.tar`，归档文件自动命名：
-
-```bash
-kopsc docker save alpine:3.20                      # → alpine_3.20.tar
-kopsc docker save 9c6f07244728                     # 按 ID 查到 alpine:3.20，同样保存为 alpine_3.20.tar
-kopsc docker save sha256:9c6f07244728 --platform linux/arm64
-kopsc docker load alpine_3.20.tar                  # 等价 docker load < alpine_3.20.tar
-kopsc docker load a.tar b.tar                      # 一次导入多个
-```
-
-- 文件名取自镜像的**仓库名 + 标签**：标签前的冒号、路径分隔符 `/` 等无法用于文件名的字符改写为下划线，
-  例如 `registry.example.com:5000/team/app:1.0` → `registry.example.com_5000_team_app_1.0.tar`；
-  未打标签的镜像没有名称可依据，直接报错并提示先 `docker tag`。
-- 传入镜像 ID（可省略 `sha256:` 前缀，也可用唯一前缀）时，先向运行时查询它对应的镜像名称，再据此命名。
-  同一 ID 有多个名称时要求直接指定名称，避免文件名含糊。
-- `--platform` 等运行时选项原样透传给底层运行时。
-- `docker load` 的归档文件是**位置参数**（对应原来的 `docker load < xxx.tar`），可一次给出多个；
-  `-i/--input` 仍然可用，传 `-` 仍表示从标准输入读取。
-
-### 容器与镜像的简写（exec / rm / rmi / stop / restart）
-
-这几条命令按 kopsc 的意图做了解析，不再要求手写 docker 的细节：
-
-```bash
-kopsc docker exec web sh            # 等价 docker exec -it web -- sh（-it 已是默认）
-kopsc docker exec -u 0 web id       # 容器名之前的 -u/-w/-e 照常透传给 docker
-kopsc docker stop 3f2a1b           # 按 ID 前缀找到容器并停止
-kopsc docker rm db                 # 删除已停止的容器；运行中的会提示先 stop
-kopsc docker rmi sha256:5ca7b1d5e2fc   # 按 ID 或唯一前缀删除镜像
-```
-
-- 容器可按名称、ID 或唯一 ID 前缀定位；镜像可按名称、ID、`sha256:ID` 或唯一前缀定位。
-  目标不存在或前缀有歧义时，kopsc 直接报错，不会调用 docker。
-- `exec` 默认交互，命令之后的参数一律作为容器内命令，因此命令自己的 `-i`、`-p` 不会被当成 docker 选项；
-  显式传 `-i`/`-t`/`-it` 会报错提示「已默认交互」。
-- `rm`/`rmi` 属于破坏性命令：不带 `--yes` 时先列出将删除的对象（容器显示 ID/名称/镜像/状态，
-  镜像显示 镜像/ID/创建/大小）再以退出码 2 结束；不再接受 `-f`，强删请用 `--yes`。
-- `rm` 遇到运行中的容器会提示先 `kopsc docker stop <名称>`，不会替你强删。
-
-### 日志、占用与实时状态（logs / df / stats）
-
-```bash
-kopsc docker logs web --since 2h           # 只看最近 2 小时
-kopsc docker logs --grep ERROR web         # 只看匹配行（kopsc 选项写在容器名之前）
-kopsc docker logs --save /var/log/web.log web -f   # 同时落盘，-f 仍交给 docker
-kopsc docker df                            # 按占用大小排序的类型排行
-kopsc docker stats                         # 单次快照，默认统计全部运行中容器
-kopsc docker stats web --format '{{.CPUPerc}}'
-```
-
-- `--since`/`--grep`/`--save` 是 kopsc 私有选项，必须写在容器名之前；容器名之后的参数原样交给 docker。
-- `df` 输出「类型 / 项 / 可清理 / 大小 / 可回收」，末尾附总计与可回收提示。
-- `stats` 总是单次快照（`--no-stream`），不会再刷屏；给容器名时只统计这些，且要求容器正在运行。
-
-### 容器/Pod 诊断（diagnose）
-
-`kopsc diagnose <名称>` 自动判断目标是 Docker 容器还是 Kubernetes Pod，输出状态、根因、依据、建议，并附最近日志与事件。只读，不修改任何对象。
-
-```text
-目标:   web
-来源:   Docker (docker)
-状态:   exited  ExitCode=137  OOMKilled=true  RestartCount=3
-镜像:   nginx:1.25
-判定:   ❌ 容器因内存超限被 OOM kill
-依据:   State.Status=exited, ExitCode=137, OOMKilled=true, RestartCount=3
-建议:   提高容器的内存限制，或降低应用峰值内存；可用 kopsc docker stats 观察
-
-最近日志 (50 行):
-...
-最近事件 (1h):
-...
-```
-
-| 参数 | 说明 |
-| --- | --- |
-| `--kind docker\|k8s` | 强制来源；默认自动识别：先 `docker inspect`，未命中再 `kubectl get pod` |
-| `-n`, `-N`, `--namespace` | **仅 diagnose**：Kubernetes 命名空间。默认取 kubeconfig 当前上下文，未设置则为 `default` |
-| `--context` | kubectl 上下文 |
-| `-c`, `--container` | 多容器 Pod 只看指定容器（默认输出全部容器） |
-| `--lines N` | 日志行数，默认 50 |
-| `--no-logs` / `--no-events` | 跳过日志 / 事件采集 |
-| `--dry-run` | 只预览将执行的诊断动作，不调用 docker/kubectl |
-
-> `-n` 只在 `kopsc diagnose` 中表示 namespace；其它命令里 `-n` 仍是 `--dry-run` 的简写。
-> Docker 模式下传 `--namespace`/`--context` 会直接报错，不会静默忽略。
-
-判定覆盖：Docker 的 OOMKilled、ExitCode 137/143/126/127、正常退出、重启循环、unhealthy、created/paused/dead；
-Kubernetes 的 CrashLoopBackOff、ImagePullBackOff/ErrImagePull、CreateContainerConfigError、OOMKilled、
-Pending（结合 FailedScheduling/FailedMount 事件）、Evicted 等。
-
-### 端口占用查询（net.pids）
-
-`kopsc net pids <端口>` 等价 `lsof -ti:<端口>`：输出占用该端口的进程 PID，每行一个、升序、去重。
-
-```bash
-kopsc net pids 8080
-kopsc net pids --port 8080
-kopsc net pids 8080 --pid-file /tmp/web.pid   # 同时写出逗号分隔的 PID
-kopsc net pids 8080 --dry-run
-```
-
-- 没有进程占用时 **stdout 仍为空**、退出码仍为 0，但会在 stderr 说明「没有进程占用端口 N」，
-  避免命令行下对着空输出发懵；脚本读 stdout 不受影响。
-- `--pid-file <路径>`：把 PID 以逗号分隔写进文件（如 `123,456`），无占用时写空文件，
-  便于 `kill $(cat web.pid)`；写完会在 stderr 提示位置。
-
-底层按平台自动选择，但对外的命令与输出保持一致：
-
-| 平台 | 依次尝试的底层来源 |
-| --- | --- |
-| Linux | `lsof -ti:<port>` → `ss -H -t -u -n -p`（解析 `pid=`） → 读 `/proc/net/*` 与 `/proc/*/fd`（纯内置，零外部依赖） |
-| macOS | `lsof -ti:<port>`（系统自带，无 `/proc` 回退） |
-| Windows | `netstat -ano`（解析本地地址与 PID） |
-
-- 端口必须是 1–65535；非法端口直接报错，不执行任何外部命令。
-- `lsof` 无匹配时退出码为 1 且无输出，kopsc 视为“没有进程占用”，返回 0。
-- 只读命令，不需要 `--yes`。
-
-### 监听端口（net.ports）
-
-`kopsc net ports` 列出本机正在监听的端口，**默认输出跨平台一致的表格**（按端口升序）：
-
-```text
-$ kopsc net ports
-端口    协议  地址         PID    进程
-22      TCP   0.0.0.0      901    sshd
-6379    TCP   127.0.0.1    1500   redis-server
-53      UDP   0.0.0.0      -      -
-```
-
-- 三个平台底层分别使用 `ss -tulnp`（Linux）、`lsof -iTCP -sTCP:LISTEN -nP`（macOS）、
-  `netstat -ano`（Windows），kopsc 解析后统一成同一张表；取不到属主时显示 `-`。
-- `--raw` 保留平台原生命令的原始输出，供依赖原生格式的脚本使用。
-- 没有监听端口时 stdout 为空，stderr 提示「没有正在监听的端口」。
-
-### 其它
-
-| 命令 | 说明 | 平台变体 |
+| 分组 | 用途 | 文档 |
 | --- | --- | --- |
-| `diagnose` | 容器/Pod 状态根因诊断（自动识别 Docker 与 Kubernetes） | Linux/macOS/Windows 均使用 kopsc 内置实现 |
-| `net.pids` | 查找占用指定端口的进程 PID（等价 `lsof -ti:<端口>`） | Linux `lsof` → `ss` → `/proc`；macOS `lsof`；Windows `netstat -ano`。三平台命令与输出一致（PID 升序、每行一个） |
-| `disk.usage` | 目录占用排行（等价 `du -x --max-depth=1 -h <路径> \| sort -hr`） | Linux/macOS/Windows 均使用 kopsc 内置实现，保证输出一致 |
-| `net.ports` | 列出监听中的端口（默认表格，`--raw` 保留原生输出） | Linux `ss -tulnp`、macOS `lsof -iTCP -sTCP:LISTEN -nP`、Windows `netstat -ano`，均由 kopsc 解析为统一表格 |
-| `pkg.refreshindex` | 刷新包管理器索引 | centos `dnf makecache`、ID_LIKE rhel/fedora `dnf makecache`、ID_LIKE debian/ubuntu `apt-get update`、alpine `apk update`、macOS `brew update`、Windows `winget source update` |
-| `proc.nohup` | 后台运行命令，输出写入日志（等价 `nohup <命令> > output.log 2>&1 &`） | Linux/macOS 内置实现（新会话 + 日志追加）、Windows 内置实现（`DETACHED_PROCESS` + 日志追加） |
+| **docker** | 容器与镜像：查看、启停、日志、清理、导出/导入、Compose | [README.docker.md](README.docker.md) |
+| **net** | 网络与端口：端口被谁占用、本机监听了哪些端口 | [README.net.md](README.net.md) |
+| **disk** | 磁盘与文件占用：哪个目录、哪个文件最占空间 | [README.disk.md](README.disk.md) |
+| **diagnose** | 容器 / Pod 状态根因诊断（自动识别 Docker 与 K8s） | [README.diagnose.md](README.diagnose.md) |
+| **proc** | 本机进程：后台运行命令并写日志 | [README.proc.md](README.proc.md) |
+| **pkg** | 系统软件包：刷新包管理器索引 | [README.pkg.md](README.pkg.md) |
 
-### 后台运行（proc.nohup）
+辅助命令（不涉及具体资源，直接用即可）：
 
-`kopsc proc nohup <命令> [参数...]` 等价于 `nohup <命令> > output.log 2>&1 &`：启动命令后立刻返回，关闭终端不会终止它。
-
-```bash
-kopsc proc nohup ./server -port 8080                    # 日志写到 ./server.out（同 nohup.out）
-kopsc proc nohup -o /var/log/server.log ./server        # 指定日志
-kopsc proc nohup -C /srv/app --env=APP_ENV=prod ./run.sh  # 指定工作目录与环境变量
-kopsc proc nohup -w ./migrate.sh                        # 等它结束，并回显日志、透传退出码
-kopsc proc nohup --dry-run ./server                     # 只打印判定依据
-```
-
-- 标准输入接到空设备；标准输出与标准错误**都追加**写入日志文件（`>>` 语义），并自动创建日志目录。
-- Unix 下子进程进入新会话、无控制终端（相当于 `setsid`），Windows 下以 `DETACHED_PROCESS` 启动。
-- 选项只在**命令之前**解析：`kopsc proc nohup ffmpeg -i in.mp4` 中的 `-i` 原样给 ffmpeg，
-  不会被 kopsc 截获（因此命令自身的 `-n`/`--dry-run` 不会触发 kopsc 的预览）。
-  需要预览时把 `--dry-run` 写在命令之前、或用 `--` 分隔。
-- 不经过 shell，`>`、`|`、`&&` 需要显式写 shell：`kopsc proc nohup sh -c 'a | b > c'`。
-
-| 选项 | 说明 |
+| 命令 | 用法 |
 | --- | --- |
-| `-o`, `--out`, `--output` | 日志文件，默认 `<程序名>.out` |
-| `-C`, `--dir`, `--chdir` | 子进程工作目录（相对日志路径也基于它），默认当前目录 |
-| `-E`, `--env NAME=VALUE` | 追加环境变量，可重复 |
-| `-q`, `--quiet` | 不打印启动摘要（PID、日志路径） |
-| `-w`, `--wait` | 前台等待命令退出，回显其写入的日志内容并透传退出码 |
-| `--detach` / `--no-detach` | 默认脱离会话；`--no-detach` 保留当前会话（类似只加 `&`） |
+| `kopsc list` | 列出全部命令及在当前平台实际会执行什么 |
+| `kopsc explain <命令>` | 解释为什么选中某条底层命令，列出全部候选与被排除的原因；支持 `docker.clearsafe` 与 `docker clearsafe` 两种写法，也支持分组名（`kopsc explain docker`） |
+| `kopsc platform` | 显示探测到的 OS/ARCH/发行版/运行时 |
+| `kopsc version` | kopsc 自身版本与平台 |
+| `kopsc <命令> -h` | 任意命令的说明、当前平台命中结果与选项 |
+
+### 各模块入口速查
+
+| 想要 | 命令 |
+| --- | --- |
+| 看容器/镜像 | `kopsc docker psall`、`kopsc docker images`、`kopsc docker logs -f web` |
+| 进容器 / 跑命令 | `kopsc docker exec web sh` |
+| 清理磁盘 | `kopsc docker df` → `kopsc docker clearsafe` |
+| 搬镜像 | `kopsc docker save alpine:3.20` / `kopsc docker load alpine_3.20.tar` |
+| 查端口 | `kopsc net pids 8080`、`kopsc net ports` |
+| 查磁盘占用 | `kopsc disk usage`、`kopsc disk usage /var --depth 2` |
+| 排障 | `kopsc diagnose web` |
+| 后台跑服务 | `kopsc proc nohup ./server` |
+| 刷新软件源 | `kopsc pkg refreshindex` |
 
 ## 平台识别
 
@@ -369,6 +209,22 @@ kopsc proc nohup --dry-run ./server                     # 只打印判定依据
   这样三平台共用同一份逻辑。新增内置动作需在 `executor.builtins` 中注册。
 - 新增命令时给 `Command` 填 `ID`（点号分隔，决定 CLI 层级）、`Summary`、`Action`，别名不得重复。
 - 提交前跑 `go test ./...`：`registry.Validate()` 与快照测试会拦截重复 ID/别名、空变体、空 argv。
+
+### 文档要写在哪
+
+文档按命令分组拆分，新增命令时按分组补充：
+
+| 分组 | 文档 |
+| --- | --- |
+| docker | [`README.docker.md`](README.docker.md) |
+| net | [`README.net.md`](README.net.md) |
+| disk | [`README.disk.md`](README.disk.md) |
+| diagnose | [`README.diagnose.md`](README.diagnose.md) |
+| proc | [`README.proc.md`](README.proc.md) |
+| pkg | [`README.pkg.md`](README.pkg.md) |
+
+新分组需要新建 `README.<分组>.md`，并在本文件「命令一览」的表格里加一行链接。
+每条命令至少要写清：**作用**、**实际执行什么**、**示例**；有独有选项时补选项表。
 
 ## 开发
 
