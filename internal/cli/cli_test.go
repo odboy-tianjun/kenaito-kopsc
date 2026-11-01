@@ -748,3 +748,55 @@ func readCalls(path string) []string {
 	}
 	return out
 }
+
+func TestRootHelpIsChineseAndExplainsGroups(t *testing.T) {
+	app, stdout, stderr := testApp(centos("docker"))
+	if code := app.Execute(nil); code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	out := stdout.String()
+
+	// The framing cobra would otherwise print in English.
+	for _, want := range []string{"用法:", "可用的子命令:", "选项:", "显示帮助"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("root help missing %q:\n%s", want, out)
+		}
+	}
+	for _, unwanted := range []string{"Usage:", "Available Commands:", "Flags:", "help for ", "[flags]", "Help about any command"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("root help still contains English %q:\n%s", unwanted, out)
+		}
+	}
+
+	// Every group is described in plain words instead of "<name> 相关命令".
+	for _, want := range []string{
+		"磁盘与文件占用",
+		"网络与端口",
+		"本机进程",
+		"系统软件包",
+		"Docker 容器与镜像管理",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("root help missing group description %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "相关命令") {
+		t.Errorf("groups still use the vague \"相关命令\" wording:\n%s", out)
+	}
+}
+
+func TestGroupHelpIsChinese(t *testing.T) {
+	app, stdout, stderr := testApp(centos("docker"))
+	if code := app.Execute([]string{"disk"}); code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{"磁盘与文件占用", "用法:", "可用的子命令:", "显示帮助", "kopsc disk --help"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("group help missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "help for ") {
+		t.Errorf("group help still says \"help for\":\n%s", out)
+	}
+}
