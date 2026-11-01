@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 )
 
 // listeningPort is one listening socket with its owner, normalised across
@@ -71,6 +70,10 @@ func runNetPorts(ctx context.Context, req BuiltinRequest) error {
 }
 
 // renderListeningPorts writes the table, sorted by port.
+//
+// text/tabwriter measures in bytes, which misaligns the CJK headings (each
+// character is three bytes wide but only two columns on screen), so the
+// columns are padded by display width instead.
 func renderListeningPorts(ports []listeningPort, req BuiltinRequest) {
 	if len(ports) == 0 {
 		if req.Stderr != nil {
@@ -79,19 +82,87 @@ func renderListeningPorts(ports []listeningPort, req BuiltinRequest) {
 		return
 	}
 
-	tw := tabwriter.NewWriter(req.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "端口\t协议\t地址\tPID\t进程")
+	rows := [][]string{{"端口", "协议", "地址", "PID", "进程"}}
 	for _, p := range ports {
 		pid, process := p.PID, p.Process
 		if pid == "" {
-			pid, process = "-", "-"
+			pid = "-"
 		}
 		if process == "" {
 			process = "-"
 		}
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\n", p.Port, p.Proto, p.Address, pid, process)
+		rows = append(rows, []string{
+			strconv.Itoa(p.Port), p.Proto, displayAddress(p.Address), pid, process,
+		})
 	}
-	_ = tw.Flush()
+
+	// The last column is not padded, so lines end without trailing spaces.
+	widths := make([]int, len(rows[0]))
+	for _, row := range rows {
+		for i, cell := range row {
+			if w := displayWidth(cell); w > widths[i] {
+				widths[i] = w
+			}
+		}
+	}
+
+	// Two spaces between columns, as the rest of kopsc's tables use.
+	const gap = 2
+	var b strings.Builder
+	for _, row := range rows {
+		b.Reset()
+		for i, cell := range row {
+			b.WriteString(cell)
+			if i < len(row)-1 {
+				b.WriteString(strings.Repeat(" ", widths[i]-displayWidth(cell)+gap))
+			}
+		}
+		fmt.Fprintln(req.Stdout, strings.TrimRight(b.String(), " "))
+	}
+}
+
+// displayAddress shows a listening address the way ss/netstat print it: a
+// wildcard bind is "*", an IPv6 wildcard is "::".
+func displayAddress(addr string) string {
+	switch addr {
+	case "", "0.0.0.0", "::":
+		return "*"
+	}
+	return addr
+}
+
+// displayWidth counts the columns a string occupies in a terminal: two for
+// wide (CJK) runes, one otherwise. Combining marks are ignored.
+func displayWidth(s string) int {
+	width := 0
+	for _, r := range s {
+		width += runeWidth(r)
+	}
+	return width
+}
+
+// runeWidth is the usual wcwidth approximation: East Asian wide characters
+// take two columns, everything else one.
+func runeWidth(r rune) int {
+	switch {
+	case r == 0:
+		return 0
+	case r < 32:
+		return 0
+	case r < 0x1100:
+		return 1
+	case r <= 0x115F, // Hangul Jamo
+		r >= 0x2E80 && r <= 0xA4CF, // CJK radicals, Kana, CJK ideographs
+		r >= 0xAC00 && r <= 0xD7A3, // Hangul syllables
+		r >= 0xF900 && r <= 0xFAFF, // CJK compatibility ideographs
+		r >= 0xFE30 && r <= 0xFE6F, // CJK compatibility forms
+		r >= 0xFF00 && r <= 0xFF60, // fullwidth forms
+		r >= 0xFFE0 && r <= 0xFFE6,
+		r >= 0x1F300 && r <= 0x1F64F, // emoji
+		r >= 0x20000 && r <= 0x3FFFD:
+		return 2
+	}
+	return 1
 }
 
 // listenCommandFor picks the platform's command.

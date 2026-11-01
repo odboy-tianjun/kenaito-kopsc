@@ -218,3 +218,75 @@ func TestNetPortsRawKeepsCommandOutput(t *testing.T) {
 func strconvQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
+
+func TestDisplayWidth(t *testing.T) {
+	cases := map[string]int{
+		"端口":        4, // each CJK rune is two columns
+		"PID":       3,
+		"127.0.0.1": 9,
+		"进程":        4,
+		"":          0,
+	}
+	for in, want := range cases {
+		if got := displayWidth(in); got != want {
+			t.Errorf("displayWidth(%q) = %d, want %d", in, got, want)
+		}
+	}
+}
+
+// TestRenderListeningPortsAlignsCJKHeader guards the alignment bug: with the
+// old byte-based tabwriter the CJK headings pushed every data column, because
+// each heading rune counts as three bytes but only two columns.
+func TestRenderListeningPortsAlignsCJKHeader(t *testing.T) {
+	ports := []listeningPort{
+		{Proto: "TCP", Address: "127.0.0.1", Port: 22, PID: "901", Process: "sshd"},
+		{Proto: "TCP", Address: "0.0.0.0", Port: 3306, PID: "2442", Process: "docker"},
+	}
+	var out bytes.Buffer
+	renderListeningPorts(ports, BuiltinRequest{Stdout: &out, Stderr: &out})
+
+	lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected header + 2 rows, got %d:\n%s", len(lines), out.String())
+	}
+
+	// "协议" is the heading above the "TCP" column, so that cell must start at
+	// the same display column on every line — the bug put it further right.
+	want := columnStart(lines[0], "协议")
+	for i, line := range lines[1:] {
+		if got := columnStart(line, "TCP"); got != want {
+			t.Errorf("row %d: TCP starts at display column %d, header 协议 at %d:\n%s",
+				i+1, got, want, out.String())
+		}
+	}
+
+	for _, line := range lines {
+		if line != strings.TrimRight(line, " ") {
+			t.Errorf("trailing spaces in %q", line)
+		}
+	}
+}
+
+// columnStart returns the display column at which cell begins in line.
+func columnStart(line, cell string) int {
+	i := strings.Index(line, cell)
+	if i < 0 {
+		return -1
+	}
+	return displayWidth(line[:i])
+}
+
+func TestDisplayAddress(t *testing.T) {
+	cases := map[string]string{
+		"0.0.0.0":   "*",
+		"::":        "*",
+		"":          "*",
+		"127.0.0.1": "127.0.0.1",
+		"::1":       "::1",
+	}
+	for in, want := range cases {
+		if got := displayAddress(in); got != want {
+			t.Errorf("displayAddress(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
