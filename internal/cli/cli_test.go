@@ -166,13 +166,17 @@ func TestExplainUnavailableStillListsCandidates(t *testing.T) {
 }
 
 func TestExplainUnknownCommand(t *testing.T) {
-	app, _, stderr := testApp(centos("docker"))
+	app, stdout, _ := testApp(centos("docker"))
 
 	if code := app.Execute([]string{"explain", "nope"}); code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
-	if !strings.Contains(stderr.String(), "未知命令") {
-		t.Errorf("stderr = %s", stderr.String())
+	out := stdout.String()
+	// The error lists what does exist instead of only saying "unknown".
+	for _, want := range []string{`没有名为 "nope" 的命令`, "可用的命令:", "docker.clearsafe", "docker clearsafe"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("explain output missing %q:\n%s", want, out)
+		}
 	}
 }
 
@@ -798,5 +802,104 @@ func TestGroupHelpIsChinese(t *testing.T) {
 	}
 	if strings.Contains(out, "help for ") {
 		t.Errorf("group help still says \"help for\":\n%s", out)
+	}
+}
+
+func TestExplainAcceptsSpacedAndDottedForms(t *testing.T) {
+	for _, args := range [][]string{
+		{"explain", "docker.clearsafe"},
+		{"explain", "docker", "clearsafe"},
+		{"explain", "docker.prunesafe"}, // alias
+	} {
+		app, stdout, stderr := testApp(centos("docker"))
+		if code := app.Execute(args); code != 0 {
+			t.Fatalf("args %v: exit code = %d, stderr=%s", args, code, stderr.String())
+		}
+		out := stdout.String()
+		for _, want := range []string{
+			"命令: docker.clearsafe",
+			"别名: docker.prunesafe",
+			"平台:",
+			"结果:",
+			"候选:",
+			"执行: docker system prune -f",
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("args %v: output missing %q:\n%s", args, want, out)
+			}
+		}
+	}
+}
+
+func TestExplainShowsUsageOnlyWhenDeclared(t *testing.T) {
+	// net.pids declares <端口>, so the usage line must appear.
+	app, stdout, _ := testApp(centos("docker"))
+	if code := app.Execute([]string{"explain", "net.pids"}); code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	if !strings.Contains(stdout.String(), "用法: kopsc net pids <端口>") {
+		t.Errorf("usage line missing:\n%s", stdout.String())
+	}
+
+	// docker.clearsafe takes no arguments, so it has no usage line.
+	app, stdout, _ = testApp(centos("docker"))
+	if code := app.Execute([]string{"explain", "docker.clearsafe"}); code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	if strings.Contains(stdout.String(), "用法:") {
+		t.Errorf("unexpected usage line:\n%s", stdout.String())
+	}
+}
+
+func TestExplainMentionsYesForDestructiveCommand(t *testing.T) {
+	app, stdout, _ := testApp(centos("docker"))
+	if code := app.Execute([]string{"explain", "docker.clearall"}); code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	if !strings.Contains(stdout.String(), "破坏性命令") {
+		t.Errorf("destructive hint missing:\n%s", stdout.String())
+	}
+}
+
+func TestExplainGroupSummarisesCommands(t *testing.T) {
+	app, stdout, _ := testApp(centos("docker"))
+	if code := app.Execute([]string{"explain", "net"}); code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	out := stdout.String()
+	for _, want := range []string{`分组 "net"`, "net.pids", "net.ports", "命令", "状态", "将执行", "说明"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("group output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestExplainRequiresCommandName(t *testing.T) {
+	app, _, stderr := testApp(centos("docker"))
+	if code := app.Execute([]string{"explain"}); code == 0 {
+		t.Fatal("expected a non-zero exit code without a command name")
+	}
+	if !strings.Contains(stderr.String(), "缺少命令名") {
+		t.Errorf("stderr = %s", stderr.String())
+	}
+}
+
+func TestExplainHelpDocumentsWaysAndExitCodes(t *testing.T) {
+	app, stdout, _ := testApp(centos("docker"))
+	if code := app.Execute([]string{"explain", "--help"}); code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"docker.clearsafe",         // dotted form
+		"docker clearsafe",         // spaced form
+		"别名",                       // aliases are accepted
+		"退出码",                      // exit codes documented
+		"得分",                       // scoring explained
+		"kopsc explain docker cle", // an example
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("explain --help missing %q:\n%s", want, out)
+		}
 	}
 }

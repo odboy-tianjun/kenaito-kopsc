@@ -80,6 +80,8 @@ kopsc proc nohup ./server            # 后台运行命令，输出写日志（�
 
 kopsc list                        # 全部命令及当前平台可用性
 kopsc explain docker.clearsafe    # 匹配过程、全部候选及各自被选中/拒绝的原因
+kopsc explain docker clearsafe    # 同上，空格写法也支持
+kopsc explain net                 # 只看分组：列出该组每条命令在本平台的匹配结果
 kopsc platform                    # 探测到的 OS/ARCH/发行版/运行时
 kopsc version                     # 版本与平台
 ```

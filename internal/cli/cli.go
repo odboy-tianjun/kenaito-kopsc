@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
@@ -413,8 +412,7 @@ func (a *App) newListCmd() *cobra.Command {
 		Short: "列出全部命令及其在当前平台的可用性",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			tw := tabwriter.NewWriter(a.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(tw, "命令\t状态\t将执行")
+			rows := [][]string{{"命令", "状态", "将执行"}}
 			for i := range a.Registry.Commands {
 				entry := &a.Registry.Commands[i]
 				status, planned := "可用", "-"
@@ -423,9 +421,10 @@ func (a *App) newListCmd() *cobra.Command {
 				} else {
 					status = "不可用"
 				}
-				fmt.Fprintf(tw, "%s\t%s\t%s\n", entry.ID, status, planned)
+				rows = append(rows, []string{entry.ID, status, planned})
 			}
-			return tw.Flush()
+			writeColumns(a.Stdout, rows)
+			return nil
 		},
 	}
 }
@@ -434,43 +433,195 @@ func (a *App) newExplainCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "explain <命令>",
 		Short: "解释某条命令在当前平台的匹配过程",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			entry, ok := a.Registry.Lookup(args[0])
-			if !ok {
-				return fmt.Errorf("未知命令 %q", args[0])
-			}
+		Long: `解释 kopsc 为什么在当前平台选择了某个底层命令。
 
-			w := a.Stdout
-			fmt.Fprintf(w, "命令: %s\n", entry.ID)
-			fmt.Fprintf(w, "说明: %s\n", entry.Summary)
-			fmt.Fprintf(w, "动作: %s\n", entry.Action)
-			fmt.Fprintf(w, "平台: %s\n\n", resolve.DescribeInfo(a.Info))
+kopsc 的每条命令都由若干「变体」组成，每个变体声明它适用的环境
+（操作系统、发行版、CPU 架构、容器运行时）。explain 会打印当前探测到的
+平台信息、命中的变体及其得分，并列出全部候选以及每个候选被选中或被排除的原因，
+方便排查“为什么执行的是这条命令”“为什么本平台不可用”。
 
-			result, err := resolve.Resolve(entry, a.Info)
-			if err != nil {
-				fmt.Fprintf(w, "结果: 当前平台不可用 — %v\n\n", err)
-			} else {
-				fmt.Fprintf(w, "结果: 命中变体 #%d（%d 分）→ %s\n\n",
-					result.VariantIdx, result.Score, variantDisplay(result.Variant))
-			}
+命令名有两种写法，等价：
+  kopsc explain docker.clearsafe   点号分隔的完整 ID
+  kopsc explain docker clearsafe   命令行中的写法
 
-			fmt.Fprintln(w, "候选:")
-			for _, c := range result.Candidates {
-				mark := "✗"
-				if c.Matched {
-					mark = "✓"
-				}
-				note := ""
-				if c.Variant.Note != "" {
-					note = "  # " + c.Variant.Note
-				}
-				fmt.Fprintf(w, "  %s #%d %d 分  %s -> %s%s\n",
-					mark, c.Index, c.Score, c.Reason, variantDisplay(c.Variant), note)
-			}
-			return nil
-		},
+也可以使用别名（如 docker.prunesafe），或只写分组名查看该组内匹配较好的命令
+（如 kopsc explain docker）。
+
+输出各项含义：
+  命令 / 说明 / 动作   该命令的用途与安全约定
+  平台                当前探测结果：系统/架构、发行版、已安装的运行时
+  结果                命中的变体序号、得分与最终要执行的命令
+  候选                全部变体：✓ 为满足约束并参与比较，✗ 为被排除
+  得分                发行版精确命中 +3、ID_LIKE 命中 +2、运行时命中 +2，
+                      通用变体 0 分；同分时按运行时偏好与约束数量取舍
+
+退出码：找到命令即返回 0（即使本平台不可用，也会说明原因）；命令名不存在返回 1。`,
+		Example: `  kopsc explain docker.clearsafe      查看清理命令在本平台为什么这样执行
+  kopsc explain docker clearsafe      同上，与命令行写法一致
+  kopsc explain disk.usage            查看磁盘占用命令的候选
+  kopsc explain docker                查看 docker 分组内各命令的匹配情况`,
+		Args: a.explainArgs,
+		RunE: a.runExplain,
 	}
+}
+
+// explainArgs accepts the command name in either its dotted (docker.clearsafe)
+// or spaced (docker clearsafe) form.
+func (a *App) explainArgs(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("缺少命令名；用法: %s <命令>，例如 %s docker.clearsafe（可先用 kopsc list 查看全部命令）",
+			cmd.CommandPath(), cmd.CommandPath())
+	}
+	return nil
+}
+
+// resolveExplainTarget maps the arguments to a registry entry. A full dotted or
+// spaced name wins; otherwise the arguments are treated as a command prefix, so
+// `kopsc explain docker` explains every command in that group.
+func (a *App) resolveExplainTarget(args []string) (*registry.Command, string, bool) {
+	joined := strings.Join(args, " ")
+	for _, name := range []string{joined, strings.Join(args, ".")} {
+		if cmd, ok := a.Registry.Lookup(name); ok {
+			return cmd, "", true
+		}
+	}
+	return nil, joined, false
+}
+
+// explainGroup returns the commands whose ID starts with the given prefix, for
+// `kopsc explain <分组名>`.
+func (a *App) explainGroup(prefix string) []*registry.Command {
+	want := strings.TrimSuffix(prefix, ".") + "."
+	var out []*registry.Command
+	for i := range a.Registry.Commands {
+		if strings.HasPrefix(a.Registry.Commands[i].ID, want) {
+			out = append(out, &a.Registry.Commands[i])
+		}
+	}
+	return out
+}
+
+// explainCommands summarises a group: one line per command with the variant it
+// would run on this platform.
+func (a *App) explainCommands(cmds []*registry.Command) error {
+	w := a.Stdout
+	fmt.Fprintf(w, "分组 %q 下共 %d 条命令，平台: %s\n\n", strings.Split(cmds[0].ID, ".")[0], len(cmds), resolve.DescribeInfo(a.Info))
+
+	rows := [][]string{{"命令", "状态", "将执行", "说明"}}
+	for _, cmd := range cmds {
+		status, planned := "可用", "-"
+		if result, err := resolve.Resolve(cmd, a.Info); err == nil {
+			planned = variantDisplay(result.Variant)
+		} else {
+			status = "不可用"
+		}
+		rows = append(rows, []string{cmd.ID, status, planned, cmd.Summary})
+	}
+	writeColumns(w, rows)
+	fmt.Fprintf(w, "\n查看单条命令的匹配过程：kopsc explain %s\n", cmds[0].ID)
+	return nil
+}
+
+func (a *App) runExplain(cmd *cobra.Command, args []string) error {
+	w := a.Stdout
+	entry, joined, ok := a.resolveExplainTarget(args)
+	if !ok {
+		if group := a.explainGroup(joined); len(group) > 0 {
+			return a.explainCommands(group)
+		}
+		ids := a.Registry.IDs()
+		fmt.Fprintf(w, "没有名为 %q 的命令。\n\n", joined)
+		fmt.Fprintln(w, "可用的命令:")
+		for _, id := range ids {
+			fmt.Fprintf(w, "  %s\n", id)
+		}
+		fmt.Fprintln(w, "\n提示：命令名可写点号形式（docker.clearsafe）或空格形式（docker clearsafe），可用 kopsc list 查看。")
+		a.exitCode = 1
+		return nil
+	}
+
+	fmt.Fprintf(w, "命令: %s\n", entry.ID)
+	if len(entry.Aliases) > 0 {
+		fmt.Fprintf(w, "别名: %s\n", strings.Join(entry.Aliases, ", "))
+	}
+	fmt.Fprintf(w, "说明: %s\n", entry.Summary)
+	fmt.Fprintf(w, "动作: %s\n", entry.Action)
+	if entry.Usage != "" {
+		fmt.Fprintf(w, "用法: %s %s\n", entry.Invocation(), entry.Usage)
+	}
+	if entry.RequiresYes {
+		fmt.Fprintln(w, "确认: 破坏性命令，未加 --yes 时只列出将影响的对象并以退出码 2 结束")
+	}
+	fmt.Fprintf(w, "平台: %s\n\n", resolve.DescribeInfo(a.Info))
+
+	result, err := resolve.Resolve(entry, a.Info)
+	if err != nil {
+		fmt.Fprintf(w, "结果: 当前平台不可用 — %v\n\n", err)
+	} else {
+		fmt.Fprintf(w, "结果: 命中变体 #%d（%d 分）→ %s\n\n",
+			result.VariantIdx, result.Score, variantDisplay(result.Variant))
+	}
+
+	fmt.Fprintln(w, "候选:")
+	for _, c := range result.Candidates {
+		mark := "✗"
+		if c.Matched {
+			mark = "✓"
+		}
+		fmt.Fprintf(w, "  %s #%d %d 分  %s\n", mark, c.Index, c.Score, c.Reason)
+		fmt.Fprintf(w, "      执行: %s\n", variantDisplay(c.Variant))
+		if c.Variant.Note != "" {
+			fmt.Fprintf(w, "      说明: %s\n", c.Variant.Note)
+		}
+	}
+	return nil
+}
+
+// writeColumns prints rows as a table, padding by terminal display width so
+// CJK headings line up (text/tabwriter counts bytes and would misalign them).
+func writeColumns(w io.Writer, rows [][]string) {
+	const gap = 2
+	widths := make([]int, len(rows[0]))
+	for _, row := range rows {
+		for i, cell := range row {
+			if n := displayWidth(cell); n > widths[i] {
+				widths[i] = n
+			}
+		}
+	}
+
+	var b strings.Builder
+	for _, row := range rows {
+		b.Reset()
+		for i, cell := range row {
+			b.WriteString(cell)
+			if i < len(row)-1 {
+				b.WriteString(strings.Repeat(" ", widths[i]-displayWidth(cell)+gap))
+			}
+		}
+		fmt.Fprintln(w, strings.TrimRight(b.String(), " "))
+	}
+}
+
+// displayWidth counts the columns s occupies: two for wide (CJK) runes.
+func displayWidth(s string) int {
+	width := 0
+	for _, r := range s {
+		if r >= 0x1100 && (r <= 0x115F ||
+			r >= 0x2E80 && r <= 0xA4CF ||
+			r >= 0xAC00 && r <= 0xD7A3 ||
+			r >= 0xF900 && r <= 0xFAFF ||
+			r >= 0xFE30 && r <= 0xFE6F ||
+			r >= 0xFF00 && r <= 0xFF60 ||
+			r >= 0xFFE0 && r <= 0xFFE6 ||
+			r >= 0x1F300 && r <= 0x1F64F ||
+			r >= 0x20000 && r <= 0x3FFFD) {
+			width += 2
+			continue
+		}
+		width++
+	}
+	return width
 }
 
 func (a *App) newPlatformCmd() *cobra.Command {
