@@ -23,6 +23,9 @@ type Options struct {
 	Stderr io.Writer
 	Env    []string // optional override of the child environment
 	Dir    string   // optional working directory
+	// Confirmed reports that the caller already approved a destructive
+	// command (--yes); builtins that would otherwise ask again check it.
+	Confirmed bool
 }
 
 // Plan is a resolved variant plus arguments forwarded from the caller.
@@ -117,8 +120,9 @@ func (p Plan) Run(ctx context.Context, opts Options) error {
 			Stdin:  opts.Stdin,
 			Stdout: opts.Stdout,
 			Stderr: opts.Stderr,
-			Info:   p.Result.Info,
-			Plan:   p,
+			Info:      p.Result.Info,
+			Plan:      p,
+			Confirmed: opts.Confirmed,
 		})
 	}
 

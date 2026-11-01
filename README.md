@@ -95,6 +95,9 @@ kopsc java run app.jar                     # 按 JDK 版本自动套调优参数
 kopsc java run app.jar -- --spring.profiles.active=prod
 kopsc java run --jdk 17 --print-flags app.jar   # 只看最终 java 命令行
 
+kopsc git retime 2026-10-01 2026-10-15           # 预览：把该范围提交时间改到 21:00-23:00
+kopsc git retime 2026-10-01 2026-10-15 --yes     # 确认后改写并强推（会改写历史！）
+
 kopsc list                        # 全部命令及当前平台可用性
 kopsc explain docker.clearsafe    # 匹配过程、全部候选及各自被选中/拒绝的原因
 kopsc explain docker clearsafe    # 同上，空格写法也支持
@@ -144,6 +147,7 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | **diagnose** | 容器 / Pod 状态根因诊断（自动识别 Docker 与 K8s） | [README.diagnose.md](README.diagnose.md) |
 | **proc** | 本机进程：后台运行命令并写日志、等待进程退出 | [README.proc.md](README.proc.md) |
 | **java** | Java 应用：按 JDK 版本套用调优参数并运行 jar | [README.java.md](README.java.md) |
+| **git** | Git 历史：按日期范围调整提交时间并强推 | [README.git.md](README.git.md) |
 | **pkg** | 系统软件包：刷新包管理器索引 | [README.pkg.md](README.pkg.md) |
 
 辅助命令（不涉及具体资源，直接用即可）：
@@ -170,6 +174,7 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | 后台跑服务 | `kopsc proc nohup ./server` |
 | 等进程退出 | `kopsc proc wait nginx`、`kopsc proc wait --pid 1234 --timeout 30` |
 | 跑 Java 应用 | `kopsc java run app.jar`、`kopsc java run --jdk 17 --print-flags app.jar` |
+| 调整提交时间 | `kopsc git retime 2026-10-01 2026-10-15`（加 `--yes` 才执行） |
 | 刷新软件源 | `kopsc pkg refreshindex` |
 
 ## 平台识别
@@ -232,6 +237,7 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | proc | [`README.proc.md`](README.proc.md) |
 | pkg | [`README.pkg.md`](README.pkg.md) |
 | java | [`README.java.md`](README.java.md) |
+| git | [`README.git.md`](README.git.md) |
 
 新分组需要新建 `README.<分组>.md`，并在本文件「命令一览」的表格里加一行链接。
 每条命令至少要写清：**作用**、**实际执行什么**、**示例**；有独有选项时补选项表。

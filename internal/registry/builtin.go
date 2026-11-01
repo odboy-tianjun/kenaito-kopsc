@@ -482,6 +482,37 @@ func Builtin() *Registry {
 			},
 		},
 		{
+			ID:      "git.retime",
+			Group:   "git",
+			Summary: "把指定日期范围的提交时间改到 21:00-23:00 并强推",
+			Action: "读取本地分支在给定日期范围内（含两端）的提交，保留各自的原日期，" +
+				"把时分秒重排到 21:00-23:00 之间：同一日期内相邻提交严格递增，间隔取 5-40 分钟的随机值（秒位随机），" +
+				"也可用 --interval match-remote 参照远程分支的间隔。随后重建这段历史并以 --force-with-lease 强推。" +
+				"改动前自动创建 refs/kopsc-backup/<分支>-<时间戳> 备份引用，工作区有未提交改动时拒绝执行；" +
+				"默认只打印预览表并以退出码 2 结束，必须显式加 --yes 才会改写并推送",
+			Usage:          "<开始日期> <结束日期> [选项]",
+			MinArgs:        2,
+			RequiresYes:    true,
+			ConfirmBuiltin: "git.retime.preview",
+			Variants: []Variant{
+				{
+					Match:   Match{OS: "linux"},
+					Builtin: "git.retime",
+					Note:    "Linux 内置实现（调用本机 git）",
+				},
+				{
+					Match:   Match{OS: "darwin"},
+					Builtin: "git.retime",
+					Note:    "macOS 内置实现（调用本机 git）",
+				},
+				{
+					Match:   Match{OS: "windows"},
+					Builtin: "git.retime",
+					Note:    "Windows 内置实现（调用本机 git）",
+				},
+			},
+		},
+		{
 			ID:      "pkg.refreshindex",
 			Group:   "pkg",
 			Summary: "刷新系统包管理器的软件源索引",

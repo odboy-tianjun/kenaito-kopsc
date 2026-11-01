@@ -222,6 +222,7 @@ var groupDescriptions = map[string]string{
 	"pkg":    "系统软件包：刷新包管理器（dnf/apt/apk/brew/winget）的软件源索引",
 	"proc":   "本机进程：在后台运行命令并写日志，关掉终端也不退出",
 	"java":   "Java 应用：按 JDK 版本自动套用调优参数并前台运行 jar",
+	"git":    "Git 历史：把指定日期范围的提交时间改到 21:00-23:00 并强推",
 }
 
 // newGroup builds an intermediate command such as `kopsc disk`.
@@ -308,7 +309,8 @@ func (a *App) newLeaf(cmd *registry.Command, name string) *cobra.Command {
 			}
 
 			return plan.Run(context.Background(), executor.Options{
-				DryRun: dryRun,
+				DryRun:    dryRun,
+				Confirmed: yes,
 				Stdin:  a.Stdin,
 				Stdout: a.Stdout,
 				Stderr: a.Stderr,

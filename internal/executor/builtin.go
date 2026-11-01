@@ -18,6 +18,9 @@ type BuiltinRequest struct {
 	Stdout io.Writer
 	Stderr io.Writer
 	Info   platform.Info
+	// Confirmed reports that the user passed --yes; destructive builtins use
+	// it instead of asking for confirmation a second time.
+	Confirmed bool
 	// Plan is the resolved variant and forwarded arguments. Builtins that
 	// drive an external runtime (for example docker save) read the runtime's
 	// program name and the passthrough arguments from it.
@@ -43,6 +46,8 @@ var builtins = map[string]Builtin{
 	"docker.save":        runDockerSave,
 	"docker.stats":       runDockerStats,
 	"docker.stop":        runDockerStop,
+	"git.retime":         runGitRetime,
+	"git.retime.preview": runGitRetimePreview,
 	"java.run":           runJavaRun,
 	"java.run.preview":   runJavaPreview,
 	"net.pids":           runNetPIDs,
