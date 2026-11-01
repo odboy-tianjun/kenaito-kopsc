@@ -428,14 +428,16 @@ func TestParseGitRetimeArgsRedate(t *testing.T) {
 	opts, _, err := parseGitRetimeArgs([]string{
 		"2026-10-01", "2026-10-15",
 		"--start-date", "2026-11-01",
-		"--per-day", "2",
-		"--day-gap", "3",
+		"--end-date", "2026-11-15",
 	}, time.Now())
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if opts.StartDate.Format("2006-01-02") != "2026-11-01" || opts.PerDay != 2 || opts.DayGap != 3 {
-		t.Fatalf("opts = %+v", opts)
+	if opts.StartDate.Format("2006-01-02") != "2026-11-01" {
+		t.Errorf("StartDate = %v", opts.StartDate)
+	}
+	if opts.EndDate.Format("2006-01-02") != "2026-11-15" {
+		t.Errorf("EndDate = %v", opts.EndDate)
 	}
 }
 
@@ -444,11 +446,10 @@ func TestParseGitRetimeArgsRedateValidation(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"2026-10-01", "2026-10-02", "--per-day", "2"}, "需要配合 --start-date"},
-		{[]string{"2026-10-01", "2026-10-02", "--day-gap", "2"}, "需要配合 --start-date"},
+		{[]string{"2026-10-01", "2026-10-02", "--end-date", "2026-11-15"}, "需要配合 --start-date"},
 		{[]string{"2026-10-01", "2026-10-02", "--start-date", "2026/11/01"}, "YYYY-MM-DD"},
-		{[]string{"2026-10-01", "2026-10-02", "--start-date", "2026-11-01", "--per-day", "0"}, "大于 0"},
-		{[]string{"2026-10-01", "2026-10-02", "--start-date", "2026-11-01", "--day-gap", "x"}, "大于 0"},
+		{[]string{"2026-10-01", "2026-10-02", "--start-date", "2026/11/01", "--end-date", "2026-11-15"}, "YYYY-MM-DD"},
+		{[]string{"2026-10-01", "2026-10-02", "--start-date", "2026-11-15", "--end-date", "2026-11-01"}, "早于 --start-date"},
 	}
 	for _, tc := range tests {
 		_, _, err := parseGitRetimeArgs(tc.args, time.Now())
@@ -458,12 +459,12 @@ func TestParseGitRetimeArgsRedateValidation(t *testing.T) {
 	}
 }
 
-func TestParseGitRetimeArgsDefaultDayGap(t *testing.T) {
+func TestParseGitRetimeArgsEndDateOptional(t *testing.T) {
 	opts, _, err := parseGitRetimeArgs([]string{"2026-10-01", "2026-10-02", "--start-date", "2026-11-01"}, time.Now())
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if opts.DayGap != 1 {
-		t.Errorf("DayGap = %d, want the default 1", opts.DayGap)
+	if !opts.EndDate.IsZero() {
+		t.Errorf("EndDate = %v, want the zero value (single start day)", opts.EndDate)
 	}
 }

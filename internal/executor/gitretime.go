@@ -34,11 +34,10 @@ type retimeOptions struct {
 	Gaps []time.Duration
 
 	// StartDate, when set, re-dates the commits instead of keeping their
-	// original days: the selected commits are laid out in order starting at
-	// StartDate, stepping DayGap days per day and PerDay commits per day.
+	// original days: the commits are spread evenly across [StartDate, EndDate]
+	// (EndDate defaults to StartDate), in order.
 	StartDate time.Time
-	DayGap    int // days between consecutive commit days, at least 1
-	PerDay    int // commits placed on one day, 0 means "unlimited" (one day only)
+	EndDate   time.Time
 }
 
 // defaultRetimeOptions matches the command's documented behaviour: commits land
@@ -67,9 +66,8 @@ func planRetime(commits []gitCommit, opts retimeOptions) []retime {
 	out := make([]retime, 0, len(commits))
 
 	// When a start date is given, days are assigned rather than inherited.
-	redate := !opts.StartDate.IsZero()
-	if redate && opts.DayGap < 1 {
-		opts.DayGap = 1
+	if !opts.StartDate.IsZero() {
+		return planRetimeInRange(commits, opts, window)
 	}
 
 	// Group by calendar day, preserving order.
@@ -84,29 +82,61 @@ func planRetime(commits []gitCommit, opts retimeOptions) []retime {
 	}
 
 	for _, c := range commits {
-		if redate {
-			// Start a new day whenever the current one is full.
-			if len(dayCommits) == 0 {
-				if !day.IsZero() {
-					day = day.AddDate(0, 0, opts.DayGap)
-				} else {
-					day = midnightOf(opts.StartDate)
-				}
-			}
-			if opts.PerDay > 0 && len(dayCommits) >= opts.PerDay {
-				flush()
-				day = day.AddDate(0, 0, opts.DayGap)
-			}
-			dayCommits = append(dayCommits, c)
-			continue
-		}
-
 		original := c.Date()
 		if !day.IsZero() && !original.Equal(day) {
 			flush()
 		}
 		day = original
 		dayCommits = append(dayCommits, c)
+	}
+	flush()
+	return out
+}
+
+// planRetimeInRange spreads commits evenly across [StartDate, EndDate].
+//
+// Day assignment is proportional rather than "fill the first day first": the
+// i-th commit of n lands on day floor(i * days / n), so a handful of commits
+// over a long range is spread across it instead of bunching at the start.
+// Commits sharing a day keep their order and land between 21:00 and 23:00.
+func planRetimeInRange(commits []gitCommit, opts retimeOptions, window time.Duration) []retime {
+	if len(commits) == 0 {
+		return nil
+	}
+	start := midnightOf(opts.StartDate)
+	end := start
+	if !opts.EndDate.IsZero() {
+		end = midnightOf(opts.EndDate)
+	}
+	days := int(end.Sub(start).Hours()/24) + 1
+	if days < 1 {
+		days = 1
+	}
+	total := len(commits)
+
+	// Group consecutive commits that map to the same day.
+	out := make([]retime, 0, total)
+	var group []gitCommit
+	groupDay := -1
+	flush := func() {
+		if len(group) == 0 {
+			return
+		}
+		day := start.AddDate(0, 0, groupDay)
+		out = append(out, planDay(day, group, opts, window)...)
+		group = nil
+	}
+
+	for i, c := range commits {
+		day := i * days / total
+		if day >= days {
+			day = days - 1
+		}
+		if groupDay >= 0 && day != groupDay {
+			flush()
+		}
+		groupDay = day
+		group = append(group, c)
 	}
 	flush()
 	return out

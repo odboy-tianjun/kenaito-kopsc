@@ -97,7 +97,7 @@ kopsc java run --jdk 17 --print-flags app.jar   # 只看最终 java 命令行
 
 kopsc git retime 2026-10-01 2026-10-15           # 预览：把该范围提交时间改到 21:00-23:00
 kopsc git retime 2026-10-01 2026-10-15 --yes     # 确认后改写并强推（会改写历史！）
-kopsc git retime 2026-10-01 2026-10-15 --start-date 2026-11-01 --per-day 2   # 连日期一起重排
+kopsc git retime 2026-10-01 2026-10-15 --start-date 2026-11-01 --end-date 2026-11-15   # 重排到该区间
 
 kopsc list                        # 全部命令及当前平台可用性
 kopsc explain docker.clearsafe    # 匹配过程、全部候选及各自被选中/拒绝的原因
