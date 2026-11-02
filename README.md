@@ -150,6 +150,7 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | **java** | Java 应用：按 JDK 版本套用调优参数并运行 jar | [README.java.md](README.java.md) |
 | **git** | Git 历史：按日期范围调整提交时间并强推 | [README.git.md](README.git.md) |
 | **pkg** | 系统软件包：刷新包管理器索引 | [README.pkg.md](README.pkg.md) |
+| **user** | 用户管理：授予或移除用户的 root/sudo 权限 | [README.user.md](README.user.md) |
 
 辅助命令（不涉及具体资源，直接用即可）：
 
@@ -177,6 +178,8 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | 跑 Java 应用 | `kopsc java run app.jar`、`kopsc java run --jdk 17 --print-flags app.jar` |
 | 调整提交时间 | `kopsc git retime 2026-10-01 2026-10-15`（加 `--yes` 才执行） |
 | 刷新软件源 | `kopsc pkg refreshindex` |
+| 授予用户 root 权限 | `kopsc user grant alice --yes` |
+| 移除用户 root 权限 | `kopsc user revoke alice --yes` |
 
 ## 平台识别
 
@@ -239,6 +242,7 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | pkg | [`README.pkg.md`](README.pkg.md) |
 | java | [`README.java.md`](README.java.md) |
 | git | [`README.git.md`](README.git.md) |
+| user | [`README.user.md`](README.user.md) |
 
 新分组需要新建 `README.<分组>.md`，并在本文件「命令一览」的表格里加一行链接。
 每条命令至少要写清：**作用**、**实际执行什么**、**示例**；有独有选项时补选项表。

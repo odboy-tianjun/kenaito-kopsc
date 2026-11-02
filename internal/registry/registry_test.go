@@ -26,6 +26,7 @@ func TestBuiltinIDsStable(t *testing.T) {
 		"docker.compose.up", "docker.compose.down", "docker.compose.ps", "docker.compose.logs",
 		"diagnose",
 		"disk.usage", "net.pids", "net.ports", "proc.nohup", "proc.wait", "java.run", "git.retime", "pkg.refreshindex",
+		"user.grant", "user.revoke",
 	}
 	if got := reg.IDs(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("IDs() =\n%v\nwant\n%v", got, want)

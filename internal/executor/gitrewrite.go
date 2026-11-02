@@ -240,27 +240,105 @@ func backupHint(branch, ref string) string {
 //
 // --force-with-lease is deliberate: it refuses to overwrite commits the local
 // repository has not seen, so a colleague's push is never silently discarded.
+//
+// git writes a lot to stderr on a failed push, and only some of it explains the
+// failure: git-lfs prints advisory notes ("Locking support detected…") that used
+// to be shown as if they were the cause. The error below classifies what
+// actually went wrong and tells the user what to run next.
 func forcePush(ctx context.Context, runner gitRunner, remote, branch string) error {
-	out, stderr, err := runner.Run(ctx, "push", "--force-with-lease", remote, branch)
-	if err != nil {
-		if isRejectedPush(stderr) {
-			return fmt.Errorf("远程分支 %s/%s 已有本地未知的新提交，强推被拒绝；"+
-				"请先 git fetch 并确认后再试（本地历史已改写，可用备份引用回滚）: %s",
-				remote, branch, strings.TrimSpace(stderr))
-		}
-		return gitError("git push", stderr, err)
+	_, stderr, err := runner.Run(ctx, "push", "--force-with-lease", remote, branch)
+	if err == nil {
+		return nil
 	}
-	_ = out
-	return nil
+	return classifyPushError(remote, branch, stderr, err)
 }
 
-// isRejectedPush reports whether git refused the push because the remote moved
-// (force-with-lease stale info, or a protected branch).
+// classifyPushError turns git's stderr into one actionable message.
+func classifyPushError(remote, branch, stderr string, err error) error {
+	detail := pushDetail(stderr)
+
+	switch {
+	case isLFSIncomplete(stderr):
+		return fmt.Errorf("强推被 LFS 完整性检查拦下：本地缺少远程要接收的 LFS 对象（%s）。\n"+
+			"如果当前提交用到的对象都已存在，可以跳过检查：\n"+
+			"  git -c lfs.allowincompletepush=true push --force-with-lease %s %s",
+			firstMissingObject(stderr), remote, branch)
+
+	case isLeaseRejected(stderr):
+		return fmt.Errorf("强推被拒绝：远程分支 %s/%s 有本地未知的新提交（租约校验失败）。\n"+
+			"确认远端确实该被覆盖后，显式指定远端当前 SHA 再推：\n"+
+			"  git push --force-with-lease=%s:<远端SHA> %s %s\n"+
+			"（本地历史已改写，如需撤销可用备份引用回滚）\n%s",
+			remote, branch, branch, remote, branch, detail)
+
+	case isProtected(stderr):
+		return fmt.Errorf("强推被拒绝：%s/%s 受分支保护，服务器不允许改写历史。\n"+
+			"请先在仓库设置里临时放开保护，或改推到另一个分支后再合并。\n%s",
+			remote, branch, detail)
+
+	default:
+		return gitError("git push", stderr, err)
+	}
+}
+
+// pushDetail keeps git's own output for the message, dropping the advisory
+// lines that only repeat what kopsc already says.
+func pushDetail(stderr string) string {
+	var kept []string
+	for _, line := range strings.Split(stderr, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || isLFSAdvisory(trimmed) {
+			continue
+		}
+		kept = append(kept, trimmed)
+	}
+	return strings.Join(kept, "\n")
+}
+
+// isLFSAdvisory reports whether a line is git-lfs advice rather than a failure.
+func isLFSAdvisory(line string) bool {
+	return strings.HasPrefix(line, "Locking support detected") ||
+		strings.HasPrefix(line, "$ git config lfs.") ||
+		strings.HasPrefix(line, "hint: You can disable this check")
+}
+
+// isLeaseRejected reports whether git refused because the remote moved.
+func isLeaseRejected(stderr string) bool {
+	return strings.Contains(stderr, "stale info") ||
+		strings.Contains(stderr, "[rejected]") ||
+		(strings.Contains(stderr, "rejected") && !isLFSIncomplete(stderr))
+}
+
+// isProtected reports a branch-protection refusal.
+func isProtected(stderr string) bool {
+	return strings.Contains(stderr, "protected branch") ||
+		strings.Contains(stderr, "pre-receive hook declined") ||
+		strings.Contains(stderr, "hook declined")
+}
+
+// isLFSIncomplete reports that the push was stopped by git-lfs upload checks.
+func isLFSIncomplete(stderr string) bool {
+	return strings.Contains(stderr, "LFS upload failed") ||
+		strings.Contains(stderr, "LFS upload missing objects") ||
+		strings.Contains(stderr, "(missing)")
+}
+
+// isRejectedPush reports whether git refused the push for a remote-side reason,
+// as opposed to a local failure such as LFS objects.
 func isRejectedPush(stderr string) bool {
-	for _, marker := range []string{"stale info", "rejected", "protected branch", "hook declined"} {
-		if strings.Contains(stderr, marker) {
-			return true
+	return isLeaseRejected(stderr) || isProtected(stderr)
+}
+
+// firstMissingObject extracts the first "(missing) <path> (<oid>)" entry.
+func firstMissingObject(stderr string) string {
+	for _, line := range strings.Split(stderr, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "(missing)") {
+			fields := strings.Fields(strings.TrimPrefix(line, "(missing)"))
+			if len(fields) > 0 {
+				return fields[0]
+			}
 		}
 	}
-	return false
+	return "未知对象"
 }

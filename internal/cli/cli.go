@@ -223,6 +223,7 @@ var groupDescriptions = map[string]string{
 	"proc":   "本机进程：在后台运行命令并写日志，关掉终端也不退出",
 	"java":   "Java 应用：按 JDK 版本自动套用调优参数并前台运行 jar",
 	"git":    "Git 历史：把指定日期范围的提交时间改到 21:00-23:00 并强推",
+	"user":   "用户管理：授予或移除用户的 root/sudo 权限",
 }
 
 // newGroup builds an intermediate command such as `kopsc disk`.

@@ -551,6 +551,64 @@ func Builtin() *Registry {
 				},
 			},
 		},
+		{
+			ID:      "user.grant",
+			Group:   "user",
+			Summary: "授予用户 root/sudo 权限",
+			Action: "将指定用户添加到系统的管理员组，使其获得 root/sudo 权限。" +
+				"Linux: 添加到 wheel（CentOS/RHEL）或 sudo（Debian/Ubuntu）组；" +
+				"macOS: 添加到 admin 组；Windows: 添加到 Administrators 组。" +
+				"需要当前用户已有 sudo/管理员权限；执行后用户需重新登录才能生效",
+			Usage:       "<用户名>",
+			MinArgs:     1,
+			RequiresYes: true,
+			Variants: []Variant{
+				{
+					Match:   Match{OS: "linux"},
+					Builtin: "user.grant",
+					Note:    "Linux 内置实现（usermod -aG wheel/sudo）",
+				},
+				{
+					Match:   Match{OS: "darwin"},
+					Builtin: "user.grant",
+					Note:    "macOS 内置实现（dseditgroup -a admin）",
+				},
+				{
+					Match:   Match{OS: "windows"},
+					Builtin: "user.grant",
+					Note:    "Windows 内置实现（net localgroup Administrators /add）",
+				},
+			},
+		},
+		{
+			ID:      "user.revoke",
+			Group:   "user",
+			Summary: "移除用户的 root/sudo 权限",
+			Action: "将指定用户从系统的管理员组移除，取消其 root/sudo 权限。" +
+				"Linux: 从 wheel（CentOS/RHEL）或 sudo（Debian/Ubuntu）组移除；" +
+				"macOS: 从 admin 组移除；Windows: 从 Administrators 组移除。" +
+				"需要当前用户已有 sudo/管理员权限；执行后用户需重新登录才能生效",
+			Usage:       "<用户名>",
+			MinArgs:     1,
+			RequiresYes: true,
+			Variants: []Variant{
+				{
+					Match:   Match{OS: "linux"},
+					Builtin: "user.revoke",
+					Note:    "Linux 内置实现（gpasswd -d wheel/sudo）",
+				},
+				{
+					Match:   Match{OS: "darwin"},
+					Builtin: "user.revoke",
+					Note:    "macOS 内置实现（dseditgroup -d admin）",
+				},
+				{
+					Match:   Match{OS: "windows"},
+					Builtin: "user.revoke",
+					Note:    "Windows 内置实现（net localgroup Administrators /delete）",
+				},
+			},
+		},
 	}}
 }
 
