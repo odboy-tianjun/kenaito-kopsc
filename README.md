@@ -143,14 +143,20 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | 分组 | 用途 | 文档 |
 | --- | --- | --- |
 | **docker** | 容器与镜像：查看、启停、日志、清理、导出/导入、Compose | [README.docker.md](README.docker.md) |
-| **net** | 网络与端口：端口被谁占用、本机监听了哪些端口 | [README.net.md](README.net.md) |
+| **net** | 网络与端口：端口被谁占用、监听端口、ping、DNS、路由追踪、HTTP 诊断 | [README.net.md](README.net.md) |
 | **disk** | 磁盘与文件占用：哪个目录、哪个文件最占空间 | [README.disk.md](README.disk.md) |
 | **diagnose** | 容器 / Pod 状态根因诊断（自动识别 Docker 与 K8s） | [README.diagnose.md](README.diagnose.md) |
-| **proc** | 本机进程：后台运行命令并写日志、等待进程退出 | [README.proc.md](README.proc.md) |
+| **proc** | 本机进程：后台运行、等待退出、按资源排序、按名称终止 | [README.proc.md](README.proc.md) |
 | **java** | Java 应用：按 JDK 版本套用调优参数并运行 jar | [README.java.md](README.java.md) |
 | **git** | Git 历史：按日期范围调整提交时间并强推 | [README.git.md](README.git.md) |
 | **pkg** | 系统软件包：刷新包管理器索引 | [README.pkg.md](README.pkg.md) |
 | **user** | 用户管理：授予或移除用户的 root/sudo 权限 | [README.user.md](README.user.md) |
+| **file** | 文件查找：按大小、修改时间、名称查找文件 | [README.file.md](README.file.md) |
+| **svc** | 服务管理：查看状态、启用/禁用、查看日志 | [README.svc.md](README.svc.md) |
+| **archive** | 压缩文件：自动识别格式并解压 | [README.archive.md](README.archive.md) |
+| **sys** | 系统信息：OS、CPU、内存、磁盘一览 | [README.sys.md](README.sys.md) |
+| **log** | 系统日志：搜索关键字、查看最近日志 | [README.log.md](README.log.md) |
+| **fw** | 防火墙：查看状态、开放/关闭端口 | [README.fw.md](README.fw.md) |
 
 辅助命令（不涉及具体资源，直接用即可）：
 
@@ -175,11 +181,29 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | 排障 | `kopsc diagnose web` |
 | 后台跑服务 | `kopsc proc nohup ./server` |
 | 等进程退出 | `kopsc proc wait nginx`、`kopsc proc wait --pid 1234 --timeout 30` |
+| 看进程资源排行 | `kopsc proc topmem`、`kopsc proc topcpu` |
+| 按名字杀进程 | `kopsc proc killname nginx --yes` |
 | 跑 Java 应用 | `kopsc java run app.jar`、`kopsc java run --jdk 17 --print-flags app.jar` |
 | 调整提交时间 | `kopsc git retime 2026-10-01 2026-10-15`（加 `--yes` 才执行） |
 | 刷新软件源 | `kopsc pkg refreshindex` |
 | 授予用户 root 权限 | `kopsc user grant alice --yes` |
 | 移除用户 root 权限 | `kopsc user revoke alice --yes` |
+| 找大文件 | `kopsc file findbig /var --threshold 500M` |
+| 找最近修改的文件 | `kopsc file findrecent /home --days 3` |
+| 按名字找文件 | `kopsc file findname "*.log" /var` |
+| 看服务状态 | `kopsc svc status nginx` |
+| 启用/禁用服务 | `kopsc svc enable nginx --yes` / `kopsc svc disable nginx --yes` |
+| 看服务日志 | `kopsc svc logs nginx -f` |
+| 解压文件 | `kopsc archive extract app.tar.gz` |
+| 看系统信息 | `kopsc sysinfo` |
+| 测试连通性 | `kopsc net ping example.com` |
+| 路由追踪 | `kopsc net trace example.com` |
+| DNS 查询 | `kopsc net dns example.com -t MX` |
+| HTTP 诊断 | `kopsc net curl https://example.com -L` |
+| 搜索系统日志 | `kopsc log search "error" --since 1h` |
+| 看最近日志 | `kopsc log last 100` |
+| 看防火墙状态 | `kopsc fw status` |
+| 开放/关闭端口 | `kopsc fw allow 8080/tcp --yes` / `kopsc fw deny 8080/tcp --yes` |
 
 ## 平台识别
 
@@ -243,6 +267,12 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | java | [`README.java.md`](README.java.md) |
 | git | [`README.git.md`](README.git.md) |
 | user | [`README.user.md`](README.user.md) |
+| file | [`README.file.md`](README.file.md) |
+| svc | [`README.svc.md`](README.svc.md) |
+| archive | [`README.archive.md`](README.archive.md) |
+| sys | [`README.sys.md`](README.sys.md) |
+| log | [`README.log.md`](README.log.md) |
+| fw | [`README.fw.md`](README.fw.md) |
 
 新分组需要新建 `README.<分组>.md`，并在本文件「命令一览」的表格里加一行链接。
 每条命令至少要写清：**作用**、**实际执行什么**、**示例**；有独有选项时补选项表。

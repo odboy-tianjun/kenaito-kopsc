@@ -216,14 +216,20 @@ func translateHelp(text string) string {
 // groupDescriptions explains what each command group is for. Without them
 // cobra would show "disk 相关命令", which tells a user nothing.
 var groupDescriptions = map[string]string{
-	"docker": "Docker 容器与镜像管理（查看、启停、日志、清理、导出/导入、Compose）",
-	"disk":   "磁盘与文件占用：查看哪个目录、哪个文件最占空间",
-	"net":    "网络与端口：端口被谁占用、本机监听了哪些端口",
-	"pkg":    "系统软件包：刷新包管理器（dnf/apt/apk/brew/winget）的软件源索引",
-	"proc":   "本机进程：在后台运行命令并写日志，关掉终端也不退出",
-	"java":   "Java 应用：按 JDK 版本自动套用调优参数并前台运行 jar",
-	"git":    "Git 历史：把指定日期范围的提交时间改到 21:00-23:00 并强推",
-	"user":   "用户管理：授予或移除用户的 root/sudo 权限",
+	"docker":  "Docker 容器与镜像管理（查看、启停、日志、清理、导出/导入、Compose）",
+	"disk":    "磁盘与文件占用：查看哪个目录、哪个文件最占空间",
+	"net":     "网络与端口：端口被谁占用、本机监听了哪些端口、连通性、DNS、路由追踪、HTTP 诊断",
+	"pkg":     "系统软件包：刷新包管理器（dnf/apt/apk/brew/winget）的软件源索引",
+	"proc":    "本机进程：后台运行命令并写日志、等待进程退出、按资源排序、按名称终止",
+	"java":    "Java 应用：按 JDK 版本自动套用调优参数并前台运行 jar",
+	"git":     "Git 历史：把指定日期范围的提交时间改到 21:00-23:00 并强推",
+	"user":    "用户管理：授予或移除用户的 root/sudo 权限",
+	"file":    "文件查找：按大小、修改时间、名称查找文件",
+	"svc":     "服务管理：查看状态、启用/禁用、查看日志（systemctl/launchctl/sc 统一接口）",
+	"archive": "压缩文件：自动识别格式并解压",
+	"sys":     "系统信息：OS、CPU、内存、磁盘一览",
+	"log":     "系统日志：搜索关键字、查看最近日志",
+	"fw":      "防火墙：查看状态、开放/关闭端口（ufw/firewalld/iptables 统一接口）",
 }
 
 // newGroup builds an intermediate command such as `kopsc disk`.

@@ -609,7 +609,244 @@ func Builtin() *Registry {
 				},
 			},
 		},
+
+		// ----- file -----
+		{
+			ID:      "file.findbig",
+			Group:   "file",
+			Summary: "查找大于指定阈值的文件（按大小排序）",
+			Action: "递归扫描目录，找出所有大于阈值的常规文件，按大小从大到小排序输出。" +
+				"默认阈值 100M，默认路径当前目录；--threshold 可指定大小（支持 K/M/G/T 后缀）",
+			Usage:    "[路径] [--threshold 大小]",
+			Variants: threePlatformBuiltins("file.findbig"),
+		},
+		{
+			ID:      "file.findrecent",
+			Group:   "file",
+			Summary: "查找最近 N 天内修改过的文件",
+			Action: "递归扫描目录，找出最近 N 天内修改过的常规文件，按修改时间从新到旧排序输出。" +
+				"默认 7 天，默认路径当前目录；--days 可指定天数",
+			Usage:    "[路径] [--days 天数]",
+			Variants: threePlatformBuiltins("file.findrecent"),
+		},
+		{
+			ID:      "file.findname",
+			Group:   "file",
+			Summary: "按文件名查找文件（忽略大小写）",
+			Action: "递归扫描目录，按文件名模式匹配（支持通配符 * 和 ?，忽略大小写）。" +
+				"默认路径当前目录",
+			Usage:    "<模式> [路径]",
+			MinArgs:  1,
+			Variants: threePlatformBuiltins("file.findname"),
+		},
+
+		// ----- svc -----
+		{
+			ID:      "svc.status",
+			Group:   "svc",
+			Summary: "查看服务状态与最近日志",
+			Action: "一步查看服务运行状态和最近 20 行日志。" +
+				"Linux: systemctl status + journalctl；macOS: launchctl list + log show；" +
+				"Windows: sc query",
+			Usage:    "<服务名>",
+			MinArgs:  1,
+			Variants: threePlatformBuiltins("svc.status"),
+		},
+		{
+			ID:      "svc.enable",
+			Group:   "svc",
+			Summary: "启用并启动服务（开机自启 + 立即启动）",
+			Action: "将服务设为开机自启并立即启动。" +
+				"Linux: systemctl enable + start；macOS: launchctl load -w；" +
+				"Windows: sc config start=auto + sc start",
+			Usage:       "<服务名>",
+			MinArgs:     1,
+			RequiresYes: true,
+			Variants:    threePlatformBuiltins("svc.enable"),
+		},
+		{
+			ID:      "svc.disable",
+			Group:   "svc",
+			Summary: "禁用并停止服务",
+			Action: "停止服务并取消开机自启。" +
+				"Linux: systemctl stop + disable；macOS: launchctl unload -w；" +
+				"Windows: sc stop + sc config start=disabled",
+			Usage:       "<服务名>",
+			MinArgs:     1,
+			RequiresYes: true,
+			Variants:    threePlatformBuiltins("svc.disable"),
+		},
+		{
+			ID:      "svc.logs",
+			Group:   "svc",
+			Summary: "查看服务日志（支持跟踪）",
+			Action: "查看指定服务的日志。-f 可实时跟踪新日志，-n 指定行数（默认 50）。" +
+				"Linux: journalctl -u；macOS: log show；Windows: wevtutil",
+			Usage:    "<服务名> [-f] [-n 行数]",
+			MinArgs:  1,
+			Variants: threePlatformBuiltins("svc.logs"),
+		},
+
+		// ----- archive -----
+		{
+			ID:      "archive.extract",
+			Aliases: []string{"archive.unzip", "archive.untar"},
+			Group:   "archive",
+			Summary: "自动识别格式并解压压缩文件",
+			Action: "根据文件扩展名自动选择解压方式：支持 .tar.gz / .tgz / .tar.bz2 / .tar.xz / .tar / .zip / .gz。" +
+				"默认解压到当前目录，--dir 可指定目标目录",
+			Usage:    "<文件> [--dir 目录]",
+			MinArgs:  1,
+			Variants: threePlatformBuiltins("archive.extract"),
+		},
+
+		// ----- sysinfo -----
+		{
+			ID:      "sysinfo",
+			Group:   "sys",
+			Summary: "显示系统信息一览（OS、CPU、内存、磁盘）",
+			Action: "一次性输出操作系统、CPU 型号与核心数、内存总量与可用量、磁盘使用情况。" +
+				"Linux 读取 /proc 与 cgroup，macOS 使用 sysctl，Windows 使用 wmic",
+			Variants: threePlatformBuiltins("sysinfo"),
+		},
+
+		// ----- proc additions -----
+		{
+			ID:       "proc.topmem",
+			Group:    "proc",
+			Summary:  "按内存占用排序显示进程（默认前 10）",
+			Action:   "列出内存占用最高的 N 个进程，按 RSS 降序排列。默认显示前 10，-n 可指定数量",
+			Usage:    "[数量]",
+			Variants: threePlatformBuiltins("proc.topmem"),
+		},
+		{
+			ID:      "proc.topcpu",
+			Group:   "proc",
+			Summary: "按 CPU 占用排序显示进程（默认前 10）",
+			Action: "列出 CPU 占用最高的 N 个进程，按 %CPU 降序排列。默认显示前 10，-n 可指定数量。" +
+				"Windows 不支持（tasklist 不报告 CPU 使用率）",
+			Usage:    "[数量]",
+			Variants: threePlatformBuiltins("proc.topcpu"),
+		},
+		{
+			ID:      "proc.killname",
+			Group:   "proc",
+			Summary: "按进程名终止进程",
+			Action: "查找名称或命令行中包含指定关键字的所有进程并终止它们。" +
+				"默认只列出匹配进程，需加 --yes 确认终止",
+			Usage:       "<进程名>",
+			MinArgs:     1,
+			RequiresYes: true,
+			Variants:    threePlatformBuiltins("proc.killname"),
+		},
+
+		// ----- net additions -----
+		{
+			ID:      "net.ping",
+			Group:   "net",
+			Summary: "测试与目标主机的连通性",
+			Action: "向目标主机发送 ICMP 回显请求，检测网络连通性与延迟。" +
+				"默认发送 4 个包，-c 可指定数量",
+			Usage:    "<主机> [-c 次数]",
+			MinArgs:  1,
+			Variants: threePlatformBuiltins("net.ping"),
+		},
+		{
+			ID:      "net.trace",
+			Group:   "net",
+			Summary: "路由追踪（显示数据包经过的每一跳）",
+			Action: "追踪到达目标主机经过的每一跳路由。优先使用 mtr（最佳输出），" +
+				"回退到 traceroute（Linux/macOS）或 tracert（Windows）",
+			Usage:    "<主机>",
+			MinArgs:  1,
+			Variants: threePlatformBuiltins("net.trace"),
+		},
+		{
+			ID:      "net.dns",
+			Group:   "net",
+			Summary: "DNS 查询（解析域名）",
+			Action: "查询域名的 DNS 记录。优先使用 dig，回退到 nslookup 或 host。" +
+				"-t 指定记录类型（A/AAAA/MX/CNAME 等），-s 指定 DNS 服务器",
+			Usage:    "<域名> [-t 类型] [-s 服务器]",
+			MinArgs:  1,
+			Variants: threePlatformBuiltins("net.dns"),
+		},
+		{
+			ID:      "net.curl",
+			Group:   "net",
+			Summary: "HTTP 诊断（状态码、耗时、重定向链）",
+			Action: "发送 HTTP 请求并显示诊断信息：状态码、DNS 解析耗时、TCP 连接耗时、TLS 握手耗时、" +
+				"首字节耗时、总耗时、下载大小与速度。-L 跟随重定向，-X 指定方法，-H 添加 header",
+			Usage:    "<URL> [-L] [-X 方法] [-H header]",
+			MinArgs:  1,
+			Variants: threePlatformBuiltins("net.curl"),
+		},
+
+		// ----- log -----
+		{
+			ID:      "log.search",
+			Group:   "log",
+			Summary: "在系统日志中搜索关键字",
+			Action: "在系统日志中搜索包含指定关键字的条目。" +
+				"Linux: journalctl --grep；macOS: log show --predicate；Windows: wevtutil。" +
+				"--since 限定时间范围（如 1h、30m），-u 限定服务，-n 限定行数",
+			Usage:    "<关键字> [--since 时长] [-u 服务] [-n 行数]",
+			MinArgs:  1,
+			Variants: threePlatformBuiltins("log.search"),
+		},
+		{
+			ID:      "log.last",
+			Group:   "log",
+			Summary: "查看最近的系统日志",
+			Action: "显示最近的系统日志条目。默认 50 行，-n 可指定行数，-u 可限定服务。" +
+				"Linux: journalctl；macOS: log show；Windows: wevtutil",
+			Usage:    "[行数] [-u 服务]",
+			Variants: threePlatformBuiltins("log.last"),
+		},
+
+		// ----- fw -----
+		{
+			ID:      "fw.status",
+			Group:   "fw",
+			Summary: "查看防火墙状态与规则",
+			Action: "显示当前防火墙状态与规则列表。" +
+				"Linux: 自动检测 ufw / firewalld / iptables；macOS: ALF（应用防火墙）；" +
+				"Windows: netsh advfirewall",
+			Variants: threePlatformBuiltins("fw.status"),
+		},
+		{
+			ID:      "fw.allow",
+			Group:   "fw",
+			Summary: "开放防火墙端口",
+			Action: "在防火墙中开放指定端口。支持 8080/tcp 或 8080/udp 形式，默认 tcp。" +
+				"Linux: ufw allow / firewall-cmd --add-port；Windows: netsh advfirewall add rule",
+			Usage:       "<端口>[/<协议>]",
+			MinArgs:     1,
+			RequiresYes: true,
+			Variants:    threePlatformBuiltins("fw.allow"),
+		},
+		{
+			ID:      "fw.deny",
+			Group:   "fw",
+			Summary: "关闭防火墙端口",
+			Action: "在防火墙中关闭指定端口。支持 8080/tcp 或 8080/udp 形式，默认 tcp。" +
+				"Linux: ufw deny / firewall-cmd --remove-port；Windows: netsh advfirewall delete rule",
+			Usage:       "<端口>[/<协议>]",
+			MinArgs:     1,
+			RequiresYes: true,
+			Variants:    threePlatformBuiltins("fw.deny"),
+		},
 	}}
+}
+
+// threePlatformBuiltins builds the platform matrix for a command that kopsc
+// implements itself on all three platforms.
+func threePlatformBuiltins(name string) []Variant {
+	return []Variant{
+		{Match: Match{OS: "linux"}, Builtin: name, Note: "Linux 内置实现"},
+		{Match: Match{OS: "darwin"}, Builtin: name, Note: "macOS 内置实现"},
+		{Match: Match{OS: "windows"}, Builtin: name, Note: "Windows 内置实现"},
+	}
 }
 
 // runtimeBuiltinVariants builds the platform matrix for a container command

@@ -27,6 +27,14 @@ func TestBuiltinIDsStable(t *testing.T) {
 		"diagnose",
 		"disk.usage", "net.pids", "net.ports", "proc.nohup", "proc.wait", "java.run", "git.retime", "pkg.refreshindex",
 		"user.grant", "user.revoke",
+		"file.findbig", "file.findrecent", "file.findname",
+		"svc.status", "svc.enable", "svc.disable", "svc.logs",
+		"archive.extract",
+		"sysinfo",
+		"proc.topmem", "proc.topcpu", "proc.killname",
+		"net.ping", "net.trace", "net.dns", "net.curl",
+		"log.search", "log.last",
+		"fw.status", "fw.allow", "fw.deny",
 	}
 	if got := reg.IDs(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("IDs() =\n%v\nwant\n%v", got, want)

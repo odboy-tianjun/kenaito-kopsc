@@ -2,11 +2,15 @@
 
 > 返回 [README.md](README.md)
 
-查看端口被谁占用、本机监听了哪些端口。两个命令都只读，不需要 `--yes`。
+查看端口被谁占用、本机监听了哪些端口、测试连通性、DNS 查询、路由追踪、HTTP 诊断。
 
 ```bash
-kopsc net pids 8080    # 谁占用了 8080 端口（输出 PID）
-kopsc net ports        # 本机正在监听哪些端口（统一表格）
+kopsc net pids 8080                # 谁占用了 8080 端口（输出 PID）
+kopsc net ports                    # 本机正在监听哪些端口（统一表格）
+kopsc net ping example.com         # 测试连通性
+kopsc net trace example.com        # 路由追踪
+kopsc net dns example.com          # DNS 查询
+kopsc net curl https://example.com # HTTP 诊断
 ```
 
 ## 端口占用查询（net.pids）
@@ -54,3 +58,68 @@ $ kopsc net ports
 - 通配地址 `0.0.0.0` 与 `::` 统一显示为 `*`。
 - `--raw` 保留平台原生命令的原始输出，供依赖原生格式的脚本使用。
 - 没有监听端口时 stdout 为空，stderr 提示「没有正在监听的端口」。
+
+## 连通性测试（net.ping）
+
+```bash
+kopsc net ping example.com         # 默认 4 个包
+kopsc net ping example.com -c 10   # 发送 10 个包
+```
+
+底层调用系统 `ping` 命令。
+
+## 路由追踪（net.trace）
+
+```bash
+kopsc net trace example.com
+```
+
+优先使用 `mtr --report`（最佳输出），回退到 `traceroute`（Linux/macOS）或 `tracert`（Windows）。
+
+## DNS 查询（net.dns）
+
+```bash
+kopsc net dns example.com              # 默认 A 记录
+kopsc net dns example.com -t MX        # 查询 MX 记录
+kopsc net dns example.com -t AAAA      # 查询 AAAA 记录
+kopsc net dns example.com -s 8.8.8.8   # 指定 DNS 服务器
+```
+
+优先使用 `dig`，回退到 `nslookup` 或 `host`。
+
+### 选项
+
+| 选项 | 说明 |
+| --- | --- |
+| `-t` / `--type` | 记录类型（A/AAAA/MX/CNAME 等） |
+| `-s` / `--server` | DNS 服务器地址 |
+
+## HTTP 诊断（net.curl）
+
+```bash
+kopsc net curl https://example.com          # 基本诊断
+kopsc net curl https://example.com -L       # 跟随重定向
+kopsc net curl https://api.example.com -X POST -H "Content-Type: application/json"
+```
+
+输出示例：
+
+```
+HTTP 状态码:  200
+重定向次数:  0
+DNS 解析:   0.005s
+TCP 连接:   0.032s
+TLS 握手:   0.089s
+首字节:     0.145s
+总耗时:     0.146s
+下载大小:   1234 bytes
+下载速度:   8452.05 bytes/s
+```
+
+### 选项
+
+| 选项 | 说明 |
+| --- | --- |
+| `-L` / `--follow` | 跟随重定向 |
+| `-X` / `--method` | HTTP 方法（GET/POST/PUT 等） |
+| `-H` / `--header` | 添加请求头，可重复 |

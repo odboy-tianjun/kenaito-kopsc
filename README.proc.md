@@ -2,11 +2,15 @@
 
 > 返回 [README.md](README.md)
 
-在后台运行命令并写日志，关掉终端也不会退出；也可以等某个进程退出后再继续。
+在后台运行命令并写日志，关掉终端也不会退出；也可以等某个进程退出后再继续；
+还能按资源占用排序查看进程、按名称终止进程。
 
 ```bash
 kopsc proc nohup ./server            # 后台运行命令，输出写日志
 kopsc proc wait nginx                # 等 nginx 退出后返回
+kopsc proc topmem                    # 内存占用前 10 的进程
+kopsc proc topcpu                    # CPU 占用前 10 的进程
+kopsc proc killname nginx --yes      # 终止名为 nginx 的进程
 ```
 
 ## 后台运行（proc.nohup）
@@ -86,3 +90,41 @@ kopsc proc wait nginx --interval 500ms -q   # 每 0.5 秒查一次，不打印�
 
 > 关键字请直接作为参数书写；若关键字以 `-` 开头，用 `--` 分隔，例如 `kopsc proc wait -- -weird`。
 > `--dry-run` 只打印判定依据，不会去查询进程。
+
+## 按资源排序查看进程（proc.topmem / proc.topcpu）
+
+```bash
+kopsc proc topmem                    # 内存占用前 10
+kopsc proc topcpu                    # CPU 占用前 10
+kopsc proc topmem 20                 # 内存占用前 20
+kopsc proc topcpu -n 5               # CPU 占用前 5
+```
+
+输出示例：
+
+```
+=== 占用 CPU 前 10 的进程 ===
+
+PID      CPU      进程                 命令
+1234     45.2%    java                 java -jar app.jar --spring.profiles.active=prod
+5678     12.3%    nginx                nginx: worker process
+```
+
+### 选项
+
+| 选项 | 说明 |
+| --- | --- |
+| `-n` / `--count` / 位置参数 | 显示数量（默认 10） |
+
+> Windows 下 `proc topcpu` 不可用（tasklist 不报告 CPU 使用率）。
+
+## 按进程名终止进程（proc.killname）
+
+```bash
+kopsc proc killname nginx            # 列出匹配进程（不执行）
+kopsc proc killname nginx --yes      # 确认终止
+```
+
+匹配规则：进程名或命令行中包含指定关键字（忽略大小写）。
+
+> 这是破坏性命令，未加 `--yes` 时只列出匹配进程并以退出码 2 结束。
