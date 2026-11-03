@@ -166,6 +166,7 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | `kopsc explain <命令>` | 解释为什么选中某条底层命令，列出全部候选与被排除的原因；支持 `docker.clearsafe` 与 `docker clearsafe` 两种写法，也支持分组名（`kopsc explain docker`） |
 | `kopsc platform` | 显示探测到的 OS/ARCH/发行版/运行时 |
 | `kopsc version` | kopsc 自身版本与平台 |
+| `kopsc completion <shell>` | 生成 shell 补全脚本（bash/zsh/fish/powershell），详见 [README.completion.md](README.completion.md) |
 | `kopsc <命令> -h` | 任意命令的说明、当前平台命中结果与选项 |
 
 ### 各模块入口速查
@@ -273,6 +274,7 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | sys | [`README.sys.md`](README.sys.md) |
 | log | [`README.log.md`](README.log.md) |
 | fw | [`README.fw.md`](README.fw.md) |
+| completion | [`README.completion.md`](README.completion.md) |
 
 新分组需要新建 `README.<分组>.md`，并在本文件「命令一览」的表格里加一行链接。
 每条命令至少要写清：**作用**、**实际执行什么**、**示例**；有独有选项时补选项表。
