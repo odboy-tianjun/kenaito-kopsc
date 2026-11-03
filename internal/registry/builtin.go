@@ -543,6 +543,87 @@ func Builtin() *Registry {
 			},
 		},
 		{
+			ID:      "git.squash",
+			Group:   "git",
+			Summary: "合并最近 N 个提交为一个",
+			Action: "将最近 N 个提交合并为一个新提交，清理提交历史。" +
+				"默认使用第一个提交的消息，可用 -m 指定新消息。" +
+				"这是破坏性操作，需要 --yes 确认",
+			Usage:       "<数量> [-m 消息]",
+			MinArgs:     1,
+			RequiresYes: true,
+			Variants: []Variant{
+				{
+					Match:   Match{OS: "linux"},
+					Builtin: "git.squash",
+					Note:    "Linux 内置实现（调用本机 git）",
+				},
+				{
+					Match:   Match{OS: "darwin"},
+					Builtin: "git.squash",
+					Note:    "macOS 内置实现（调用本机 git）",
+				},
+				{
+					Match:   Match{OS: "windows"},
+					Builtin: "git.squash",
+					Note:    "Windows 内置实现（调用本机 git）",
+				},
+			},
+		},
+		{
+			ID:      "git.undo",
+			Group:   "git",
+			Summary: "撤销最后一次提交",
+			Action: "撤销最后一次提交。默认保留改动到暂存区（--soft），" +
+				"加 --hard 完全丢弃改动。需要 --yes 确认",
+			Usage:    "[--hard]",
+			Variants: threePlatformGitVariants("git.undo"),
+		},
+		{
+			ID:      "git.clean",
+			Group:   "git",
+			Summary: "清理未跟踪的文件和目录",
+			Action: "删除工作区中未跟踪的文件和目录。" +
+				"默认先预览，加 --yes 确认删除，--dry-run 只看不删",
+			Usage:    "[--dry-run]",
+			Variants: threePlatformGitVariants("git.clean"),
+		},
+		{
+			ID:      "git.sync",
+			Group:   "git",
+			Summary: "同步远程仓库",
+			Action: "同步当前分支到远程。自动识别远程分支（main/master），" +
+				"执行 fetch 后 rebase 或 fast-forward",
+			Usage:    "",
+			Variants: threePlatformGitVariants("git.sync"),
+		},
+		{
+			ID:      "git.discard",
+			Group:   "git",
+			Summary: "放弃本地所有改动，以远程为主",
+			Action: "丢弃所有本地改动（包括未提交的、新增的），重置到远程分支。" +
+				"自动识别远程分支（main/master）。这是破坏性操作，需要 --yes 确认",
+			Usage:       "",
+			RequiresYes: true,
+			Variants: []Variant{
+				{
+					Match:   Match{OS: "linux"},
+					Builtin: "git.discard",
+					Note:    "Linux 内置实现（调用本机 git）",
+				},
+				{
+					Match:   Match{OS: "darwin"},
+					Builtin: "git.discard",
+					Note:    "macOS 内置实现（调用本机 git）",
+				},
+				{
+					Match:   Match{OS: "windows"},
+					Builtin: "git.discard",
+					Note:    "Windows 内置实现（调用本机 git）",
+				},
+			},
+		},
+		{
 			ID:      "pkg.list",
 			Group:   "pkg",
 			Summary: "列出已安装的软件包",
@@ -1077,6 +1158,16 @@ func threePlatformBuiltins(name string) []Variant {
 		{Match: Match{OS: "linux"}, Builtin: name, Note: "Linux 内置实现"},
 		{Match: Match{OS: "darwin"}, Builtin: name, Note: "macOS 内置实现"},
 		{Match: Match{OS: "windows"}, Builtin: name, Note: "Windows 内置实现"},
+	}
+}
+
+// threePlatformGitVariants builds the platform matrix for a git command that
+// calls the local git binary on all three platforms.
+func threePlatformGitVariants(name string) []Variant {
+	return []Variant{
+		{Match: Match{OS: "linux"}, Builtin: name, Note: "Linux 内置实现（调用本机 git）"},
+		{Match: Match{OS: "darwin"}, Builtin: name, Note: "macOS 内置实现（调用本机 git）"},
+		{Match: Match{OS: "windows"}, Builtin: name, Note: "Windows 内置实现（调用本机 git）"},
 	}
 }
 

@@ -25,7 +25,7 @@ func TestBuiltinIDsStable(t *testing.T) {
 		"docker.prunebuilder", "docker.prunevolumes", "docker.clearall",
 		"docker.compose.up", "docker.compose.down", "docker.compose.ps", "docker.compose.logs",
 		"diagnose",
-		"disk.usage", "net.pids", "net.ports", "proc.nohup", "proc.wait", "java.run", "git.retime", "git.time", "pkg.list", "pkg.refreshindex",
+		"disk.usage", "net.pids", "net.ports", "proc.nohup", "proc.wait", "java.run", "git.retime", "git.time", "git.squash", "git.undo", "git.clean", "git.sync", "git.discard", "pkg.list", "pkg.refreshindex",
 		"user.list", "user.grant", "user.revoke",
 		"file.findbig", "file.findrecent", "file.findname",
 		"svc.list", "svc.status", "svc.enable", "svc.disable", "svc.logs",
