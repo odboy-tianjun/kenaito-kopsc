@@ -6,11 +6,20 @@
 
 | 命令 | 用途 | 实际执行 |
 | --- | --- | --- |
+| `kopsc user list` | 列出系统用户 | Linux/macOS: `getent passwd` 或 `/etc/passwd`<br>Windows: `net user` |
 | `kopsc user grant <用户名>` | 授予用户 root/sudo 权限 | Linux: `usermod -aG wheel/sudo <用户名>`<br>macOS: `dseditgroup -o edit -t user -a <用户名> admin`<br>Windows: `net localgroup Administrators <用户名> /add` |
 | `kopsc user revoke <用户名>` | 移除用户的 root/sudo 权限 | Linux: `gpasswd -d <用户名> wheel/sudo`<br>macOS: `dseditgroup -o edit -t user -d <用户名> admin`<br>Windows: `net localgroup Administrators <用户名> /delete` |
 | `kopsc user info [用户名]` | 查看用户详细信息 | Linux/macOS: `id` + `/etc/passwd` + `groups`<br>Windows: `net user` |
 
 ## 用法
+
+### 列出系统用户
+
+```bash
+kopsc user list
+```
+
+列出系统中所有用户账户。Linux/macOS 优先使用 `getent passwd`，回退到读取 `/etc/passwd`；Windows 使用 `net user`。
 
 ### 授予用户 root/sudo 权限
 

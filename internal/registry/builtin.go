@@ -514,6 +514,15 @@ func Builtin() *Registry {
 			},
 		},
 		{
+			ID:      "pkg.list",
+			Group:   "pkg",
+			Summary: "列出已安装的软件包",
+			Action: "列出系统中已安装的软件包。" +
+				"Linux: dpkg -l（Debian/Ubuntu）/ rpm -qa（CentOS/RHEL）/ apk list（Alpine）；" +
+				"macOS: brew list；Windows: winget list",
+			Variants: threePlatformBuiltins("pkg.list"),
+		},
+		{
 			ID:      "pkg.refreshindex",
 			Group:   "pkg",
 			Summary: "刷新系统包管理器的软件源索引",
@@ -550,6 +559,14 @@ func Builtin() *Registry {
 					Note:  "Windows 使用 winget",
 				},
 			},
+		},
+		{
+			ID:      "user.list",
+			Group:   "user",
+			Summary: "列出系统用户",
+			Action: "列出系统中所有用户账户。" +
+				"Linux/macOS: getent passwd 或 /etc/passwd；Windows: net user",
+			Variants: threePlatformBuiltins("user.list"),
 		},
 		{
 			ID:      "user.grant",
@@ -720,6 +737,13 @@ func Builtin() *Registry {
 		},
 
 		// ----- proc additions -----
+		{
+			ID:       "proc.list",
+			Group:    "proc",
+			Summary:  "列出所有进程",
+			Action:   "列出系统中所有正在运行的进程。Linux/macOS: ps aux；Windows: tasklist",
+			Variants: threePlatformBuiltins("proc.list"),
+		},
 		{
 			ID:       "proc.topmem",
 			Group:    "proc",

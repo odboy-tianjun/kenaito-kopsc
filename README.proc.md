@@ -6,6 +6,7 @@
 还能按资源占用排序查看进程、按名称终止进程、查看进程树。
 
 ```bash
+kopsc proc list                    # 列出所有进程
 kopsc proc nohup ./server            # 后台运行命令，输出写日志
 kopsc proc wait nginx                # 等 nginx 退出后返回
 kopsc proc topmem                    # 内存占用前 10 的进程
@@ -13,6 +14,14 @@ kopsc proc topcpu                    # CPU 占用前 10 的进程
 kopsc proc killname nginx --yes      # 终止名为 nginx 的进程
 kopsc proc tree                      # 查看进程树
 ```
+
+## 列出所有进程（proc.list）
+
+```bash
+kopsc proc list
+```
+
+列出系统中所有正在运行的进程。Linux/macOS 使用 `ps aux`，Windows 使用 `tasklist`。
 
 ## 后台运行（proc.nohup）
 

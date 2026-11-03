@@ -2,11 +2,28 @@
 
 > 返回 [README.md](README.md)
 
-刷新系统包管理器的软件源索引。
+刷新系统包管理器的软件源索引，或列出已安装的软件包。
 
 ```bash
-kopsc pkg refreshindex    # 刷新包管理器索引（dnf/apt/apk/brew/winget，按平台自动选）
+kopsc pkg list              # 列出已安装的软件包
+kopsc pkg refreshindex      # 刷新包管理器索引（dnf/apt/apk/brew/winget，按平台自动选）
 ```
+
+## 列出已安装的软件包（pkg.list）
+
+```bash
+kopsc pkg list
+```
+
+列出系统中已安装的软件包。
+
+| 平台 | 实际执行 |
+| --- | --- |
+| Linux（Debian/Ubuntu） | `dpkg -l` |
+| Linux（CentOS/RHEL/Fedora） | `rpm -qa` |
+| Linux（Alpine） | `apk list --installed` |
+| macOS | `brew list` |
+| Windows | `winget list` |
 
 ## 刷新软件源索引（pkg.refreshindex）
 

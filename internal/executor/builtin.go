@@ -70,7 +70,9 @@ var builtins = map[string]Builtin{
 	"net.ports":          runNetPorts,
 	"net.speed":          runNetSpeed,
 	"net.trace":          runNetTrace,
+	"pkg.list":           runPkgList,
 	"proc.killname":      runProcKillName,
+	"proc.list":          runProcList,
 	"proc.nohup":         runNohup,
 	"proc.topcpu":        runProcTopCPU,
 	"proc.topmem":        runProcTopMem,
@@ -84,6 +86,7 @@ var builtins = map[string]Builtin{
 	"sysinfo":            runSysInfo,
 	"user.grant":         runUserGrant,
 	"user.info":          runUserInfo,
+	"user.list":          runUserList,
 	"user.revoke":        runUserRevoke,
 }
 
