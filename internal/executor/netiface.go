@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 )
 
-// runNetIface implements `kopsc net iface`: show network interfaces and IPs.
+// runNetIface implements `kopsc net iface`: show network interfaces with IPv4 addresses.
 func runNetIface(ctx context.Context, req BuiltinRequest) error {
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -14,8 +15,29 @@ func runNetIface(ctx context.Context, req BuiltinRequest) error {
 	}
 
 	for _, iface := range ifaces {
-		// Skip loopback if not requested
+		// Skip loopback
 		if iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+
+		// Get IP addresses
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+
+		// Filter IPv4 addresses only
+		var ipv4Addrs []string
+		for _, addr := range addrs {
+			addrStr := addr.String()
+			// IPv4 addresses contain '.' but not ':'
+			if strings.Contains(addrStr, ".") && !strings.Contains(addrStr, ":") {
+				ipv4Addrs = append(ipv4Addrs, addrStr)
+			}
+		}
+
+		// Skip if no IPv4 address
+		if len(ipv4Addrs) == 0 {
 			continue
 		}
 
@@ -32,17 +54,11 @@ func runNetIface(ctx context.Context, req BuiltinRequest) error {
 			fmt.Fprintf(req.Stdout, "    MAC:  %s\n", iface.HardwareAddr.String())
 		}
 
-		// IP addresses
-		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
-		for _, addr := range addrs {
-			fmt.Fprintf(req.Stdout, "    IP:   %s\n", addr.String())
+		// IPv4 addresses only
+		for _, addr := range ipv4Addrs {
+			fmt.Fprintf(req.Stdout, "    IPv4: %s\n", addr)
 		}
 
-		// Flags
-		fmt.Fprintf(req.Stdout, "    标志: %s\n", iface.Flags.String())
 		fmt.Fprintln(req.Stdout)
 	}
 
