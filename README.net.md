@@ -2,7 +2,7 @@
 
 > 返回 [README.md](README.md)
 
-查看端口被谁占用、本机监听了哪些端口、测试连通性、DNS 查询、路由追踪、HTTP 诊断、网卡信息、连接统计、网速测试。
+查看端口被谁占用、本机监听了哪些端口、测试连通性、DNS 查询、路由追踪、HTTP 诊断、网卡信息、连接统计、网速测试、启动 HTTP 文件服务器。
 
 ```bash
 kopsc net pids 8080                # 谁占用了 8080 端口（输出 PID）
@@ -14,6 +14,7 @@ kopsc net curl https://example.com # HTTP 诊断
 kopsc net iface                    # 查看网卡和 IP 地址
 kopsc net conn                     # 查看 TCP 连接状态统计
 kopsc net speed                    # 简单网速测试
+kopsc net http                     # 启动 HTTP 文件服务器
 ```
 
 ## 端口占用查询（net.pids）
@@ -186,3 +187,45 @@ kopsc net speed --upload           # 只测上传
 | `--size` / `-s` | 测试文件大小（默认 10M，支持 K/M/G 后缀） |
 | `--download` / `-d` | 只测下载 |
 | `--upload` / `-u` | 只测上传 |
+
+## HTTP 文件服务器（net.http）
+
+```bash
+kopsc net http                    # 当前目录起 HTTP 服务，端口 8000
+kopsc net http -p 9000            # 指定端口
+kopsc net http --dir /var/www     # 指定目录
+kopsc net http --upload           # 启用上传功能
+```
+
+快速启动一个 HTTP 文件服务器，方便局域网内共享文件。纯 Go 实现，不依赖外部工具。
+
+输出示例：
+
+```
+=== HTTP 文件服务器 ===
+
+目录: /Users/odboy/projects
+地址:
+  http://localhost:8000
+  http://192.168.1.100:8000
+
+按 Ctrl+C 停止
+```
+
+### 选项
+
+| 选项 | 说明 |
+| --- | --- |
+| `--dir` / `-d` | 服务目录（默认当前目录） |
+| `--port` / `-p` | 端口号（默认 8000） |
+| `--upload` / `-u` | 启用上传功能（POST /upload） |
+
+### 上传功能
+
+启用 `--upload` 后，可通过 POST 请求上传文件：
+
+```bash
+curl -F "file=@document.pdf" http://localhost:8000/upload
+```
+
+上传的文件会保存到服务目录，同名文件自动添加后缀避免覆盖。
