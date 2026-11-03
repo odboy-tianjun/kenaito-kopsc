@@ -79,7 +79,6 @@ var builtins = map[string]Builtin{
 	"svc.enable":         runSvcEnable,
 	"svc.logs":           runSvcLogs,
 	"svc.status":         runSvcStatus,
-	"sys.uptime":         runSysUptime,
 	"sysinfo":            runSysInfo,
 	"user.grant":         runUserGrant,
 	"user.info":          runUserInfo,

@@ -154,7 +154,7 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | **file** | 文件查找：按大小、修改时间、名称查找文件、查找空文件/空目录 | [README.file.md](README.file.md) |
 | **svc** | 服务管理：查看状态、启用/禁用、查看日志 | [README.svc.md](README.svc.md) |
 | **archive** | 压缩文件：自动识别格式并解压 | [README.archive.md](README.archive.md) |
-| **sys** | 系统信息：OS、CPU、内存、磁盘一览、运行时间 | [README.sys.md](README.sys.md) |
+| **sys** | 系统信息：OS、运行时间、CPU、内存、磁盘一览 | [README.sys.md](README.sys.md) |
 | **log** | 系统日志：搜索关键字、查看最近日志 | [README.log.md](README.log.md) |
 | **fw** | 防火墙：查看状态、开放/关闭端口 | [README.fw.md](README.fw.md) |
 
@@ -205,7 +205,6 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | 看最近日志 | `kopsc log last 100` |
 | 看防火墙状态 | `kopsc fw status` |
 | 开放/关闭端口 | `kopsc fw allow 8080/tcp --yes` / `kopsc fw deny 8080/tcp --yes` |
-| 看系统运行时间 | `kopsc sys uptime` |
 | 看网卡和 IP | `kopsc net iface` |
 | 看 TCP 连接统计 | `kopsc net conn` |
 | 测网速 | `kopsc net speed` |

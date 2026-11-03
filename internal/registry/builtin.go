@@ -704,8 +704,8 @@ func Builtin() *Registry {
 		{
 			ID:      "sysinfo",
 			Group:   "sys",
-			Summary: "显示系统信息一览（OS、CPU、内存、磁盘）",
-			Action: "一次性输出操作系统、CPU 型号与核心数、内存总量与可用量、磁盘使用情况。" +
+			Summary: "显示系统信息一览（OS、运行时间、CPU、内存、磁盘）",
+			Action: "一次性输出操作系统、运行时间、CPU 型号与核心数、内存总量与可用量、磁盘使用情况。" +
 				"Linux 读取 /proc 与 cgroup，macOS 使用 sysctl，Windows 使用 wmic",
 			Variants: threePlatformBuiltins("sysinfo"),
 		},
@@ -837,17 +837,6 @@ func Builtin() *Registry {
 			Variants:    threePlatformBuiltins("fw.deny"),
 		},
 
-		// ----- sys additions -----
-		{
-			ID:       "sys.uptime",
-			Group:    "sys",
-			Summary:  "查看系统运行时间和启动时间",
-			Action:   "显示系统已运行多长时间、启动时间、负载均值。" +
-				"Linux: /proc/uptime + /proc/loadavg；macOS: sysctl kern.boottime；" +
-				"Windows: wmic os get LastBootUpTime",
-			Variants: threePlatformBuiltins("sys.uptime"),
-		},
-
 		// ----- net additions -----
 		{
 			ID:      "net.iface",
@@ -871,7 +860,7 @@ func Builtin() *Registry {
 			Summary: "简单网速测试（下载/上传）",
 			Action: "从 Cloudflare 下载测试文件测量下载速度，向 httpbin.org 上传数据测量上传速度。" +
 				"默认测试 10MB，--size 可指定大小，--download 或 --upload 可单独测试",
-			Usage: "[--size 大小] [--download] [--upload]",
+			Usage:    "[--size 大小] [--download] [--upload]",
 			Variants: threePlatformBuiltins("net.speed"),
 		},
 
@@ -892,7 +881,7 @@ func Builtin() *Registry {
 			Summary: "查找空文件和空目录",
 			Action: "递归扫描目录，找出大小为 0 的文件和没有任何内容的目录。" +
 				"--files-only 只查找空文件，--dirs-only 只查找空目录",
-			Usage: "[路径] [--files-only] [--dirs-only]",
+			Usage:    "[路径] [--files-only] [--dirs-only]",
 			Variants: threePlatformBuiltins("file.empty"),
 		},
 
@@ -904,7 +893,7 @@ func Builtin() *Registry {
 			Action: "显示用户的 UID、GID、组、家目录、Shell 等信息。" +
 				"不指定用户名时显示当前用户。" +
 				"Linux/macOS: id + /etc/passwd + groups；Windows: net user",
-			Usage: "[用户名]",
+			Usage:    "[用户名]",
 			Variants: threePlatformBuiltins("user.info"),
 		},
 	}}

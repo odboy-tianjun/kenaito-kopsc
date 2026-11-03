@@ -8,11 +8,12 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"gitea.odboy.cn/odboy/kenaito-kopsc/internal/platform"
 )
 
-// runSysInfo implements `kopsc sysinfo`: show OS, CPU, memory, disk overview.
+// runSysInfo implements `kopsc sysinfo`: show OS, CPU, memory, disk, uptime overview.
 func runSysInfo(ctx context.Context, req BuiltinRequest) error {
 	w := req.Stdout
 	res := platform.DetectResources()
@@ -37,6 +38,10 @@ func runSysInfo(ctx context.Context, req BuiltinRequest) error {
 			}
 		}
 	}
+
+	// 运行时间
+	fmt.Fprintf(w, "\n=== 运行时间 ===\n\n")
+	printUptime(ctx, w)
 
 	fmt.Fprintf(w, "\n=== CPU ===\n\n")
 	fmt.Fprintf(w, "逻辑核心:  %d\n", res.CPUs)
@@ -65,6 +70,113 @@ func runSysInfo(ctx context.Context, req BuiltinRequest) error {
 	printDiskInfo(ctx, w)
 
 	return nil
+}
+
+// printUptime 打印系统运行时间信息
+func printUptime(ctx context.Context, w interface{ Write([]byte) (int, error) }) {
+	switch runtime.GOOS {
+	case "linux":
+		printUptimeLinux(w)
+	case "darwin":
+		printUptimeDarwin(ctx, w)
+	case "windows":
+		printUptimeWindows(ctx, w)
+	}
+}
+
+func printUptimeLinux(w interface{ Write([]byte) (int, error) }) {
+	data, err := os.ReadFile("/proc/uptime")
+	if err != nil {
+		return
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) < 1 {
+		return
+	}
+	seconds, err := strconv.ParseFloat(fields[0], 64)
+	if err != nil {
+		return
+	}
+
+	bootTime := time.Now().Add(-time.Duration(seconds) * time.Second)
+	fmt.Fprintf(w, "运行时间:  %s\n", formatDuration(time.Duration(seconds)*time.Second))
+	fmt.Fprintf(w, "启动时间:  %s\n", bootTime.Format("2006-01-02 15:04:05"))
+
+	// Load average from /proc/loadavg
+	if loadavg, err := os.ReadFile("/proc/loadavg"); err == nil {
+		parts := strings.Fields(string(loadavg))
+		if len(parts) >= 3 {
+			fmt.Fprintf(w, "负载均值:  %s %s %s (1/5/15分钟)\n", parts[0], parts[1], parts[2])
+		}
+	}
+}
+
+func printUptimeDarwin(ctx context.Context, w interface{ Write([]byte) (int, error) }) {
+	out, err := exec.CommandContext(ctx, "sysctl", "-n", "kern.boottime").Output()
+	if err != nil {
+		return
+	}
+	// Output: { sec = 1234567890, usec = 123456 } Mon Jan 01 00:00:00 2024
+	line := string(out)
+	secStart := strings.Index(line, "sec = ")
+	if secStart < 0 {
+		return
+	}
+	secStr := strings.TrimSpace(line[secStart+6:])
+	if idx := strings.Index(secStr, ","); idx >= 0 {
+		secStr = secStr[:idx]
+	}
+	sec, err := strconv.ParseInt(secStr, 10, 64)
+	if err != nil {
+		return
+	}
+
+	bootTime := time.Unix(sec, 0)
+	uptime := time.Since(bootTime)
+	fmt.Fprintf(w, "运行时间:  %s\n", formatDuration(uptime))
+	fmt.Fprintf(w, "启动时间:  %s\n", bootTime.Format("2006-01-02 15:04:05"))
+
+	// Load average
+	if out, err := exec.CommandContext(ctx, "sysctl", "-n", "vm.loadavg").Output(); err == nil {
+		fmt.Fprintf(w, "负载均值:  %s\n", strings.TrimSpace(string(out)))
+	}
+}
+
+func printUptimeWindows(ctx context.Context, w interface{ Write([]byte) (int, error) }) {
+	out, err := exec.CommandContext(ctx, "wmic", "os", "get", "LastBootUpTime", "/value").Output()
+	if err != nil {
+		return
+	}
+	line := strings.TrimSpace(string(out))
+	if !strings.HasPrefix(line, "LastBootUpTime=") {
+		return
+	}
+	timeStr := strings.TrimPrefix(line, "LastBootUpTime=")
+	if len(timeStr) < 14 {
+		return
+	}
+	bootTime, err := time.Parse("20060102150405", timeStr[:14])
+	if err != nil {
+		return
+	}
+	uptime := time.Since(bootTime)
+	fmt.Fprintf(w, "运行时间:  %s\n", formatDuration(uptime))
+	fmt.Fprintf(w, "启动时间:  %s\n", bootTime.Format("2006-01-02 15:04:05"))
+}
+
+// formatDuration formats a duration into a human-readable string.
+func formatDuration(d time.Duration) string {
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	minutes := int(d.Minutes()) % 60
+
+	if days > 0 {
+		return fmt.Sprintf("%d 天 %d 小时 %d 分钟", days, hours, minutes)
+	}
+	if hours > 0 {
+		return fmt.Sprintf("%d 小时 %d 分钟", hours, minutes)
+	}
+	return fmt.Sprintf("%d 分钟", minutes)
 }
 
 func cpuModelLinux() string {
