@@ -132,8 +132,8 @@ func testDownload(ctx context.Context, size int64) (int64, error) {
 }
 
 func testUpload(ctx context.Context, size int64) (int64, error) {
-	// Use httpbin.org for upload test
-	url := "https://httpbin.org/post"
+	// Use Cloudflare's speed test endpoint for upload
+	url := fmt.Sprintf("https://speed.cloudflare.com/__up?bytes=%d", size)
 
 	// Create a reader that generates data on the fly
 	data := make([]byte, size)
@@ -156,7 +156,7 @@ func testUpload(ctx context.Context, size int64) (int64, error) {
 	defer resp.Body.Close()
 	io.Copy(io.Discard, resp.Body)
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		return 0, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
