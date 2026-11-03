@@ -2,7 +2,7 @@
 
 > 返回 [README.md](README.md)
 
-按日期范围批量调整提交时间，或修改最后一次提交的时间，然后强推。
+管理 Git 提交历史：修改提交时间、合并提交、撤销提交、清理工作区、同步远程。
 
 ```bash
 kopsc git retime 2026-10-01 2026-10-15            # 预览：会改哪些提交、改成什么时间
@@ -10,9 +10,23 @@ kopsc git retime 2026-10-01 2026-10-15 --yes      # 确认后真正改写并强�
 
 kopsc git time 2026-11-05 22:30:00                # 预览：修改最后一次提交的时间
 kopsc git time 2026-11-05 22:30:00 --yes          # 确认后修改并强推
+
+kopsc git squash 3                                # 预览：合并最近 3 个提交
+kopsc git squash 3 -m "新消息" --yes               # 合并并指定新消息
+
+kopsc git undo                                    # 撤销最后一次提交，保留改动
+kopsc git undo --hard --yes                       # 完全丢弃最后一次提交
+
+kopsc git clean                                   # 预览将清理的文件
+kopsc git clean --yes                             # 确认清理
+
+kopsc git sync                                    # 同步当前分支到远程
+
+kopsc git discard                                 # 预览将丢弃的改动
+kopsc git discard --yes                           # 放弃所有本地改动，以远程为主
 ```
 
-> ⚠️ **这会改写历史并强推**，提交 SHA 会变化。默认只预览、不改任何东西，必须显式加 `--yes` 才会执行。
+> ⚠️ **部分命令会改写历史或丢弃改动**。默认只预览、不改任何东西，必须显式加 `--yes` 才会执行。
 
 ## 修改最后一次提交时间（git.time）
 
@@ -55,6 +69,87 @@ kopsc git time 2026-11-05 22:30:00 --no-push      # 只改本地，不推送
 | `--branch <名称>` | 操作的分支，默认当前分支 |
 | `--no-push` | 只改写本地，不推送 |
 | `-y`, `--yes` | 确认执行（没有它只预览） |
+
+## 合并提交（git.squash）
+
+`kopsc git squash <数量>` 将最近 N 个提交合并为一个新提交。
+
+```bash
+kopsc git squash 3                    # 预览：合并最近 3 个提交
+kopsc git squash 3 -m "新消息" --yes   # 合并并指定新消息
+```
+
+默认使用第一个（最旧的）提交的消息，可用 `-m` 指定新消息。
+
+### 选项
+
+| 选项 | 说明 |
+| --- | --- |
+| `<数量>` | 必填，要合并的提交数量（必须 > 1） |
+| `-m <消息>` | 新提交的消息（默认用第一个提交的消息） |
+| `-y`, `--yes` | 确认执行 |
+
+## 撤销提交（git.undo）
+
+`kopsc git undo` 撤销最后一次提交。
+
+```bash
+kopsc git undo                    # 撤销提交，改动保留在暂存区
+kopsc git undo --hard --yes       # 完全丢弃改动
+```
+
+### 选项
+
+| 选项 | 说明 |
+| --- | --- |
+| `--hard` | 完全丢弃改动（默认 --soft 保留到暂存区） |
+| `-y`, `--yes` | 确认执行 |
+
+## 清理工作区（git.clean）
+
+`kopsc git clean` 删除未跟踪的文件和目录。
+
+```bash
+kopsc git clean                   # 预览将删除的文件
+kopsc git clean --yes             # 确认删除
+kopsc git clean --dry-run         # 只看不删
+```
+
+### 选项
+
+| 选项 | 说明 |
+| --- | --- |
+| `--dry-run`, `-n` | 只预览，不实际删除 |
+| `-y`, `--yes` | 确认删除 |
+
+## 同步远程（git.sync）
+
+`kopsc git sync` 同步当前分支到远程。
+
+```bash
+kopsc git sync                    # 同步当前分支
+```
+
+自动识别远程分支（main/master），执行 `git fetch` 后 rebase 或 fast-forward。
+
+## 放弃本地改动（git.discard）
+
+`kopsc git discard` 放弃所有本地改动，以远程为主。
+
+```bash
+kopsc git discard                 # 预览将丢弃的改动
+kopsc git discard --yes           # 确认丢弃
+```
+
+⚠️ **这是破坏性操作**，会丢弃所有未提交的改动、新增的文件，重置到远程分支状态。
+
+自动识别远程分支（main/master）。
+
+### 选项
+
+| 选项 | 说明 |
+| --- | --- |
+| `-y`, `--yes` | 确认执行 |
 
 ## 批量改写提交时间（git.retime）
 

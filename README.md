@@ -148,7 +148,7 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | **diagnose** | 容器 / Pod 状态根因诊断（自动识别 Docker 与 K8s） | [README.diagnose.md](README.diagnose.md) |
 | **proc** | 本机进程：列出进程、后台运行、等待退出、按资源排序、按名称终止、进程树 | [README.proc.md](README.proc.md) |
 | **java** | Java 应用：按 JDK 版本套用调优参数并运行 jar | [README.java.md](README.java.md) |
-| **git** | Git 历史：按日期范围调整提交时间、修改最后一次提交时间并强推 | [README.git.md](README.git.md) |
+| **git** | Git 历史：修改提交时间、合并提交、撤销提交、清理工作区、同步远程、放弃本地改动 | [README.git.md](README.git.md) |
 | **pkg** | 系统软件包：列出、搜索、安装、卸载、查看详情、刷新包管理器索引 | [README.pkg.md](README.pkg.md) |
 | **user** | 用户管理：列出用户、授予或移除 root/sudo 权限、查看用户信息 | [README.user.md](README.user.md) |
 | **file** | 文件查找：按大小、修改时间、名称查找文件、查找空文件/空目录 | [README.file.md](README.file.md) |
@@ -189,6 +189,11 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | 跑 Java 应用 | `kopsc java run app.jar`、`kopsc java run --jdk 17 --print-flags app.jar` |
 | 调整提交时间 | `kopsc git retime 2026-10-01 2026-10-15`（加 `--yes` 才执行） |
 | 修改最后一次提交时间 | `kopsc git time 2026-11-05 22:30:00`（加 `--yes` 才执行） |
+| 合并提交 | `kopsc git squash 3`（加 `--yes` 才执行） |
+| 撤销提交 | `kopsc git undo`（加 `--yes` 才执行） |
+| 清理工作区 | `kopsc git clean`（加 `--yes` 才执行） |
+| 同步远程 | `kopsc git sync` |
+| 放弃本地改动 | `kopsc git discard`（加 `--yes` 才执行） |
 | 搜索软件包 | `kopsc pkg search nginx` |
 | 安装软件包 | `kopsc pkg install nginx --yes` |
 | 卸载软件包 | `kopsc pkg remove nginx --yes` |
