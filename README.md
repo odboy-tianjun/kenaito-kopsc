@@ -143,17 +143,17 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | 分组 | 用途 | 文档 |
 | --- | --- | --- |
 | **docker** | 容器与镜像：查看、启停、日志、清理、导出/导入、Compose | [README.docker.md](README.docker.md) |
-| **net** | 网络与端口：端口被谁占用、监听端口、ping、DNS、路由追踪、HTTP 诊断、网卡信息、连接统计、网速测试 | [README.net.md](README.net.md) |
-| **disk** | 磁盘与文件占用：哪个目录、哪个文件最占空间 | [README.disk.md](README.disk.md) |
+| **net** | 网络与端口：端口被谁占用、监听端口、ping、DNS、路由追踪、HTTP 诊断、网卡信息、连接统计、网速测试、HTTP 文件服务器 | [README.net.md](README.net.md) |
+| **disk** | 磁盘与文件占用：哪个目录、哪个文件最占空间、inode 使用、一键磁盘健康检查 | [README.disk.md](README.disk.md) |
 | **diagnose** | 容器 / Pod 状态根因诊断（自动识别 Docker 与 K8s） | [README.diagnose.md](README.diagnose.md) |
 | **proc** | 本机进程：列出进程、后台运行、等待退出、按资源排序、按名称终止、进程树 | [README.proc.md](README.proc.md) |
 | **java** | Java 应用：按 JDK 版本套用调优参数并运行 jar | [README.java.md](README.java.md) |
-| **git** | Git 历史：按日期范围调整提交时间并强推 | [README.git.md](README.git.md) |
-| **pkg** | 系统软件包：列出已安装包、刷新包管理器索引 | [README.pkg.md](README.pkg.md) |
+| **git** | Git 历史：按日期范围调整提交时间、修改最后一次提交时间并强推 | [README.git.md](README.git.md) |
+| **pkg** | 系统软件包：列出、搜索、安装、卸载、查看详情、刷新包管理器索引 | [README.pkg.md](README.pkg.md) |
 | **user** | 用户管理：列出用户、授予或移除 root/sudo 权限、查看用户信息 | [README.user.md](README.user.md) |
 | **file** | 文件查找：按大小、修改时间、名称查找文件、查找空文件/空目录 | [README.file.md](README.file.md) |
 | **svc** | 服务管理：列出服务、查看状态、启用/禁用、查看日志 | [README.svc.md](README.svc.md) |
-| **archive** | 压缩文件：自动识别格式并解压 | [README.archive.md](README.archive.md) |
+| **archive** | 压缩文件：创建、查看内容、解压 | [README.archive.md](README.archive.md) |
 | **sys** | 系统信息：OS、运行时间、CPU、内存、磁盘一览 | [README.sys.md](README.sys.md) |
 | **log** | 系统日志：列出日志来源、搜索关键字、查看最近日志 | [README.log.md](README.log.md) |
 | **fw** | 防火墙：查看状态、开放/关闭端口 | [README.fw.md](README.fw.md) |
@@ -179,6 +179,8 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | 搬镜像 | `kopsc docker save alpine:3.20` / `kopsc docker load alpine_3.20.tar` |
 | 查端口 | `kopsc net pids 8080`、`kopsc net ports` |
 | 查磁盘占用 | `kopsc disk usage`、`kopsc disk usage /var --depth 2` |
+| 查 inode 使用 | `kopsc disk inode` |
+| 磁盘排障 | `kopsc disk check`、`kopsc disk check --all` |
 | 排障 | `kopsc diagnose web` |
 | 后台跑服务 | `kopsc proc nohup ./server` |
 | 等进程退出 | `kopsc proc wait nginx`、`kopsc proc wait --pid 1234 --timeout 30` |
@@ -186,6 +188,11 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | 按名字杀进程 | `kopsc proc killname nginx --yes` |
 | 跑 Java 应用 | `kopsc java run app.jar`、`kopsc java run --jdk 17 --print-flags app.jar` |
 | 调整提交时间 | `kopsc git retime 2026-10-01 2026-10-15`（加 `--yes` 才执行） |
+| 修改最后一次提交时间 | `kopsc git time 2026-11-05 22:30:00`（加 `--yes` 才执行） |
+| 搜索软件包 | `kopsc pkg search nginx` |
+| 安装软件包 | `kopsc pkg install nginx --yes` |
+| 卸载软件包 | `kopsc pkg remove nginx --yes` |
+| 查看软件包详情 | `kopsc pkg info nginx` |
 | 刷新软件源 | `kopsc pkg refreshindex` |
 | 授予用户 root 权限 | `kopsc user grant alice --yes` |
 | 移除用户 root 权限 | `kopsc user revoke alice --yes` |
@@ -195,7 +202,10 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | 看服务状态 | `kopsc svc status nginx` |
 | 启用/禁用服务 | `kopsc svc enable nginx --yes` / `kopsc svc disable nginx --yes` |
 | 看服务日志 | `kopsc svc logs nginx -f` |
+| 创建压缩文件 | `kopsc archive create ./mydir`、`kopsc archive create ./mydir --format zip` |
+| 查看压缩内容 | `kopsc archive list backup.tar.gz` |
 | 解压文件 | `kopsc archive extract app.tar.gz` |
+| 起 HTTP 服务器 | `kopsc net http`、`kopsc net http -p 9000 --upload` |
 | 看系统信息 | `kopsc sysinfo` |
 | 测试连通性 | `kopsc net ping example.com` |
 | 路由追踪 | `kopsc net trace example.com` |
