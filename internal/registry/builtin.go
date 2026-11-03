@@ -514,6 +514,35 @@ func Builtin() *Registry {
 			},
 		},
 		{
+			ID:      "git.time",
+			Group:   "git",
+			Summary: "修改最后一次提交的时间并强推",
+			Action: "把本地最后一次提交的作者时间和提交时间改为用户指定的时间，然后强制推送到远程。" +
+				"时间格式必须是 yyyy-MM-dd HH:mm:ss（如 2026-11-05 22:30:00）。" +
+				"同时修改 Author Date 和 Committer Date，确保远程页面显示正确。" +
+				"默认只打印预览并以退出码 2 结束，必须显式加 --yes 才会改写并推送",
+			Usage:       "<时间> [选项]",
+			MinArgs:     1,
+			RequiresYes: true,
+			Variants: []Variant{
+				{
+					Match:   Match{OS: "linux"},
+					Builtin: "git.time",
+					Note:    "Linux 内置实现（调用本机 git）",
+				},
+				{
+					Match:   Match{OS: "darwin"},
+					Builtin: "git.time",
+					Note:    "macOS 内置实现（调用本机 git）",
+				},
+				{
+					Match:   Match{OS: "windows"},
+					Builtin: "git.time",
+					Note:    "Windows 内置实现（调用本机 git）",
+				},
+			},
+		},
+		{
 			ID:      "pkg.list",
 			Group:   "pkg",
 			Summary: "列出已安装的软件包",
@@ -936,6 +965,107 @@ func Builtin() *Registry {
 				"Linux/macOS: id + /etc/passwd + groups；Windows: net user",
 			Usage:    "[用户名]",
 			Variants: threePlatformBuiltins("user.info"),
+		},
+
+		// ----- pkg additions -----
+		{
+			ID:      "pkg.install",
+			Group:   "pkg",
+			Summary: "安装软件包",
+			Action: "安装指定的软件包。" +
+				"Linux: apt-get install（Debian/Ubuntu）/ dnf install（CentOS/RHEL）/ apk add（Alpine）；" +
+				"macOS: brew install；Windows: winget install",
+			Usage:       "<包名> [包名...]",
+			MinArgs:     1,
+			RequiresYes: true,
+			Variants:    threePlatformBuiltins("pkg.install"),
+		},
+		{
+			ID:      "pkg.remove",
+			Group:   "pkg",
+			Summary: "卸载软件包",
+			Action: "卸载指定的软件包。" +
+				"Linux: apt-get remove（Debian/Ubuntu）/ dnf remove（CentOS/RHEL）/ apk del（Alpine）；" +
+				"macOS: brew uninstall；Windows: winget uninstall",
+			Usage:       "<包名> [包名...]",
+			MinArgs:     1,
+			RequiresYes: true,
+			Variants:    threePlatformBuiltins("pkg.remove"),
+		},
+		{
+			ID:      "pkg.search",
+			Group:   "pkg",
+			Summary: "搜索软件包",
+			Action: "在软件源中搜索匹配关键字的软件包。" +
+				"Linux: apt-cache search（Debian/Ubuntu）/ dnf search（CentOS/RHEL）/ apk search（Alpine）；" +
+				"macOS: brew search；Windows: winget search",
+			Usage:    "<关键字>",
+			MinArgs:  1,
+			Variants: threePlatformBuiltins("pkg.search"),
+		},
+		{
+			ID:      "pkg.info",
+			Group:   "pkg",
+			Summary: "查看软件包详情",
+			Action: "显示指定软件包的详细信息（版本、描述、依赖等）。" +
+				"Linux: apt show / dpkg -s（Debian/Ubuntu）/ rpm -qi（CentOS/RHEL）/ apk info（Alpine）；" +
+				"macOS: brew info；Windows: winget show",
+			Usage:    "<包名>",
+			MinArgs:  1,
+			Variants: threePlatformBuiltins("pkg.info"),
+		},
+
+		// ----- archive additions -----
+		{
+			ID:      "archive.create",
+			Group:   "archive",
+			Summary: "创建压缩文件",
+			Action: "将文件或目录压缩为归档文件。支持 tar.gz / tgz / tar / zip 格式，默认 tar.gz。" +
+				"--format 可指定格式，-o 可指定输出文件名",
+			Usage:    "<路径> [--format 格式] [-o 输出文件]",
+			MinArgs:  1,
+			Variants: threePlatformBuiltins("archive.create"),
+		},
+		{
+			ID:      "archive.list",
+			Group:   "archive",
+			Summary: "列出压缩文件内容（不解压）",
+			Action: "查看压缩文件的内容列表，显示权限、大小、修改时间和文件名。" +
+				"支持 tar.gz / tgz / tar / zip 格式",
+			Usage:    "<文件>",
+			MinArgs:  1,
+			Variants: threePlatformBuiltins("archive.list"),
+		},
+
+		// ----- net additions (http) -----
+		{
+			ID:      "net.http",
+			Group:   "net",
+			Summary: "启动简单的 HTTP 文件服务器",
+			Action: "在当前目录或指定目录启动 HTTP 文件服务器，方便局域网内共享文件。" +
+				"默认端口 8000，-p 可指定端口；--upload 启用上传功能",
+			Usage:    "[目录] [-p 端口] [--upload]",
+			Variants: threePlatformBuiltins("net.http"),
+		},
+
+		// ----- disk additions -----
+		{
+			ID:      "disk.inode",
+			Group:   "disk",
+			Summary: "查看 inode 使用情况",
+			Action: "显示文件系统的 inode 使用统计。inode 耗尽会导致无法创建新文件，即使磁盘空间充足。" +
+				"Linux/macOS: df -i；Windows 不支持（NTFS 无 inode 概念）",
+			Usage:    "[路径]",
+			Variants: threePlatformBuiltins("disk.inode"),
+		},
+		{
+			ID:      "disk.check",
+			Group:   "disk",
+			Summary: "一键磁盘健康检查",
+			Action: "综合检查磁盘健康状况：空间使用率、inode 使用率、大文件 TOP 5、大目录 TOP 5，并给出清理建议。" +
+				"一条命令完成磁盘排障",
+			Usage:    "[路径] [--all]",
+			Variants: threePlatformBuiltins("disk.check"),
 		},
 	}}
 }
