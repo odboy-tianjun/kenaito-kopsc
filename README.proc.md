@@ -3,7 +3,7 @@
 > 返回 [README.md](README.md)
 
 在后台运行命令并写日志，关掉终端也不会退出；也可以等某个进程退出后再继续；
-还能按资源占用排序查看进程、按名称终止进程。
+还能按资源占用排序查看进程、按名称终止进程、查看进程树。
 
 ```bash
 kopsc proc nohup ./server            # 后台运行命令，输出写日志
@@ -11,6 +11,7 @@ kopsc proc wait nginx                # 等 nginx 退出后返回
 kopsc proc topmem                    # 内存占用前 10 的进程
 kopsc proc topcpu                    # CPU 占用前 10 的进程
 kopsc proc killname nginx --yes      # 终止名为 nginx 的进程
+kopsc proc tree                      # 查看进程树
 ```
 
 ## 后台运行（proc.nohup）
@@ -128,3 +129,13 @@ kopsc proc killname nginx --yes      # 确认终止
 匹配规则：进程名或命令行中包含指定关键字（忽略大小写）。
 
 > 这是破坏性命令，未加 `--yes` 时只列出匹配进程并以退出码 2 结束。
+
+## 进程树（proc.tree）
+
+```bash
+kopsc proc tree
+```
+
+以树形结构显示进程的父子关系。
+
+Linux/macOS 优先使用 `pstree -p`（最佳输出），回退到 `ps -ejH`（Linux）或 `ps -eo pid,ppid,comm`（macOS）；Windows 使用 `tasklist /tree`。

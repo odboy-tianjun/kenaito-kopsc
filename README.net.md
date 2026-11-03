@@ -2,7 +2,7 @@
 
 > 返回 [README.md](README.md)
 
-查看端口被谁占用、本机监听了哪些端口、测试连通性、DNS 查询、路由追踪、HTTP 诊断。
+查看端口被谁占用、本机监听了哪些端口、测试连通性、DNS 查询、路由追踪、HTTP 诊断、网卡信息、连接统计、网速测试。
 
 ```bash
 kopsc net pids 8080                # 谁占用了 8080 端口（输出 PID）
@@ -11,6 +11,9 @@ kopsc net ping example.com         # 测试连通性
 kopsc net trace example.com        # 路由追踪
 kopsc net dns example.com          # DNS 查询
 kopsc net curl https://example.com # HTTP 诊断
+kopsc net iface                    # 查看网卡和 IP 地址
+kopsc net conn                     # 查看 TCP 连接状态统计
+kopsc net speed                    # 简单网速测试
 ```
 
 ## 端口占用查询（net.pids）
@@ -123,3 +126,63 @@ TLS 握手:   0.089s
 | `-L` / `--follow` | 跟随重定向 |
 | `-X` / `--method` | HTTP 方法（GET/POST/PUT 等） |
 | `-H` / `--header` | 添加请求头，可重复 |
+
+## 网卡信息（net.iface）
+
+```bash
+kopsc net iface
+```
+
+列出所有非回环网卡的信息：名称、状态（UP/DOWN）、MAC 地址、IPv4/IPv6 地址、MTU。
+
+纯 Go 实现，跨平台一致，不依赖外部命令。
+
+## 连接统计（net.conn）
+
+```bash
+kopsc net conn
+```
+
+统计各状态的 TCP 连接数量，输出示例：
+
+```
+=== TCP 连接统计 (共 108 个) ===
+
+ESTABLISHED     61
+LISTEN          32
+TIME_WAIT       14
+CLOSE_WAIT      1
+```
+
+Linux 优先使用 `ss -tan`（更快），回退到 `netstat -tan`；macOS/Windows 使用 `netstat -tan`。
+
+## 网速测试（net.speed）
+
+```bash
+kopsc net speed                    # 默认测试 10MB
+kopsc net speed --size 50M         # 测试 50MB
+kopsc net speed --download         # 只测下载
+kopsc net speed --upload           # 只测上传
+```
+
+从 Cloudflare 下载测试文件测量下载速度，向 httpbin.org 上传数据测量上传速度。
+
+输出示例：
+
+```
+=== 网络速度测试 ===
+
+测试下载速度...
+下载速度: 12.5M/s
+
+测试上传速度...
+上传速度: 3.2M/s
+```
+
+### 选项
+
+| 选项 | 说明 |
+| --- | --- |
+| `--size` / `-s` | 测试文件大小（默认 10M，支持 K/M/G 后缀） |
+| `--download` / `-d` | 只测下载 |
+| `--upload` / `-u` | 只测上传 |

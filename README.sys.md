@@ -7,8 +7,11 @@
 | 命令 | 作用 |
 | --- | --- |
 | `kopsc sysinfo` | 显示系统信息一览 |
+| `kopsc sys uptime` | 查看系统运行时间和启动时间 |
 
 ## 示例
+
+### sysinfo
 
 ```bash
 kopsc sysinfo
@@ -41,6 +44,20 @@ Filesystem      Size  Used Avail Use% Mounted on
 /dev/vda1        50G   22G   28G  44% /
 ```
 
+### sys uptime
+
+```bash
+kopsc sys uptime
+```
+
+输出示例：
+
+```
+运行时间:  15 天 3 小时 42 分钟
+启动时间:  2026-10-19 08:30:15
+负载均值:  0.15 0.22 0.18 (1/5/15分钟)
+```
+
 ## 平台实现
 
 | 信息 | Linux | macOS | Windows |
@@ -49,3 +66,4 @@ Filesystem      Size  Used Avail Use% Mounted on
 | CPU | `/proc/cpuinfo` | `sysctl` | runtime |
 | 内存 | `/proc/meminfo` + cgroup | `sysctl hw.memsize` | `wmic` |
 | 磁盘 | `df -h` | `df -h` | `wmic logicaldisk` |
+| 运行时间 | `/proc/uptime` | `sysctl kern.boottime` | `wmic os get LastBootUpTime` |

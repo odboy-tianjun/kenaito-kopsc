@@ -836,6 +836,77 @@ func Builtin() *Registry {
 			RequiresYes: true,
 			Variants:    threePlatformBuiltins("fw.deny"),
 		},
+
+		// ----- sys additions -----
+		{
+			ID:       "sys.uptime",
+			Group:    "sys",
+			Summary:  "查看系统运行时间和启动时间",
+			Action:   "显示系统已运行多长时间、启动时间、负载均值。" +
+				"Linux: /proc/uptime + /proc/loadavg；macOS: sysctl kern.boottime；" +
+				"Windows: wmic os get LastBootUpTime",
+			Variants: threePlatformBuiltins("sys.uptime"),
+		},
+
+		// ----- net additions -----
+		{
+			ID:      "net.iface",
+			Group:   "net",
+			Summary: "查看网卡信息和 IP 地址",
+			Action: "列出所有非回环网卡的信息：名称、状态、MAC 地址、IPv4/IPv6 地址、MTU。" +
+				"纯 Go 实现，跨平台一致",
+			Variants: threePlatformBuiltins("net.iface"),
+		},
+		{
+			ID:      "net.conn",
+			Group:   "net",
+			Summary: "查看 TCP 连接状态统计",
+			Action: "统计各状态的 TCP 连接数量（ESTABLISHED、TIME_WAIT、CLOSE_WAIT 等）。" +
+				"Linux: ss -s 或 netstat；macOS: netstat；Windows: netstat",
+			Variants: threePlatformBuiltins("net.conn"),
+		},
+		{
+			ID:      "net.speed",
+			Group:   "net",
+			Summary: "简单网速测试（下载/上传）",
+			Action: "从 Cloudflare 下载测试文件测量下载速度，向 httpbin.org 上传数据测量上传速度。" +
+				"默认测试 10MB，--size 可指定大小，--download 或 --upload 可单独测试",
+			Usage: "[--size 大小] [--download] [--upload]",
+			Variants: threePlatformBuiltins("net.speed"),
+		},
+
+		// ----- proc additions -----
+		{
+			ID:      "proc.tree",
+			Group:   "proc",
+			Summary: "查看进程树（父子关系）",
+			Action: "以树形结构显示进程的父子关系。" +
+				"Linux/macOS: pstree -p 或 ps -ejH；Windows: tasklist /tree",
+			Variants: threePlatformBuiltins("proc.tree"),
+		},
+
+		// ----- file additions -----
+		{
+			ID:      "file.empty",
+			Group:   "file",
+			Summary: "查找空文件和空目录",
+			Action: "递归扫描目录，找出大小为 0 的文件和没有任何内容的目录。" +
+				"--files-only 只查找空文件，--dirs-only 只查找空目录",
+			Usage: "[路径] [--files-only] [--dirs-only]",
+			Variants: threePlatformBuiltins("file.empty"),
+		},
+
+		// ----- user additions -----
+		{
+			ID:      "user.info",
+			Group:   "user",
+			Summary: "查看用户详细信息",
+			Action: "显示用户的 UID、GID、组、家目录、Shell 等信息。" +
+				"不指定用户名时显示当前用户。" +
+				"Linux/macOS: id + /etc/passwd + groups；Windows: net user",
+			Usage: "[用户名]",
+			Variants: threePlatformBuiltins("user.info"),
+		},
 	}}
 }
 

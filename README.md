@@ -143,18 +143,18 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | 分组 | 用途 | 文档 |
 | --- | --- | --- |
 | **docker** | 容器与镜像：查看、启停、日志、清理、导出/导入、Compose | [README.docker.md](README.docker.md) |
-| **net** | 网络与端口：端口被谁占用、监听端口、ping、DNS、路由追踪、HTTP 诊断 | [README.net.md](README.net.md) |
+| **net** | 网络与端口：端口被谁占用、监听端口、ping、DNS、路由追踪、HTTP 诊断、网卡信息、连接统计、网速测试 | [README.net.md](README.net.md) |
 | **disk** | 磁盘与文件占用：哪个目录、哪个文件最占空间 | [README.disk.md](README.disk.md) |
 | **diagnose** | 容器 / Pod 状态根因诊断（自动识别 Docker 与 K8s） | [README.diagnose.md](README.diagnose.md) |
-| **proc** | 本机进程：后台运行、等待退出、按资源排序、按名称终止 | [README.proc.md](README.proc.md) |
+| **proc** | 本机进程：后台运行、等待退出、按资源排序、按名称终止、进程树 | [README.proc.md](README.proc.md) |
 | **java** | Java 应用：按 JDK 版本套用调优参数并运行 jar | [README.java.md](README.java.md) |
 | **git** | Git 历史：按日期范围调整提交时间并强推 | [README.git.md](README.git.md) |
 | **pkg** | 系统软件包：刷新包管理器索引 | [README.pkg.md](README.pkg.md) |
-| **user** | 用户管理：授予或移除用户的 root/sudo 权限 | [README.user.md](README.user.md) |
-| **file** | 文件查找：按大小、修改时间、名称查找文件 | [README.file.md](README.file.md) |
+| **user** | 用户管理：授予或移除用户的 root/sudo 权限、查看用户信息 | [README.user.md](README.user.md) |
+| **file** | 文件查找：按大小、修改时间、名称查找文件、查找空文件/空目录 | [README.file.md](README.file.md) |
 | **svc** | 服务管理：查看状态、启用/禁用、查看日志 | [README.svc.md](README.svc.md) |
 | **archive** | 压缩文件：自动识别格式并解压 | [README.archive.md](README.archive.md) |
-| **sys** | 系统信息：OS、CPU、内存、磁盘一览 | [README.sys.md](README.sys.md) |
+| **sys** | 系统信息：OS、CPU、内存、磁盘一览、运行时间 | [README.sys.md](README.sys.md) |
 | **log** | 系统日志：搜索关键字、查看最近日志 | [README.log.md](README.log.md) |
 | **fw** | 防火墙：查看状态、开放/关闭端口 | [README.fw.md](README.fw.md) |
 
@@ -205,6 +205,13 @@ kopsc 的命令按用途分组，每组的完整说明（命令表、选项、�
 | 看最近日志 | `kopsc log last 100` |
 | 看防火墙状态 | `kopsc fw status` |
 | 开放/关闭端口 | `kopsc fw allow 8080/tcp --yes` / `kopsc fw deny 8080/tcp --yes` |
+| 看系统运行时间 | `kopsc sys uptime` |
+| 看网卡和 IP | `kopsc net iface` |
+| 看 TCP 连接统计 | `kopsc net conn` |
+| 测网速 | `kopsc net speed` |
+| 看进程树 | `kopsc proc tree` |
+| 找空文件/空目录 | `kopsc file empty /var` |
+| 看用户信息 | `kopsc user info` |
 
 ## 平台识别
 

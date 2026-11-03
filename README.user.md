@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | `kopsc user grant <用户名>` | 授予用户 root/sudo 权限 | Linux: `usermod -aG wheel/sudo <用户名>`<br>macOS: `dseditgroup -o edit -t user -a <用户名> admin`<br>Windows: `net localgroup Administrators <用户名> /add` |
 | `kopsc user revoke <用户名>` | 移除用户的 root/sudo 权限 | Linux: `gpasswd -d <用户名> wheel/sudo`<br>macOS: `dseditgroup -o edit -t user -d <用户名> admin`<br>Windows: `net localgroup Administrators <用户名> /delete` |
+| `kopsc user info [用户名]` | 查看用户详细信息 | Linux/macOS: `id` + `/etc/passwd` + `groups`<br>Windows: `net user` |
 
 ## 用法
 
@@ -129,3 +130,27 @@ done
 **原因**：当前用户没有 sudo/管理员权限
 
 **解决**：使用已有管理员权限的账户执行，或临时使用 `sudo` 前缀
+
+## 查看用户信息（user.info）
+
+```bash
+# 查看当前用户信息
+kopsc user info
+
+# 查看指定用户信息
+kopsc user info alice
+```
+
+输出示例：
+
+```
+用户: uid=501(alice) gid=20(staff) groups=20(staff),80(admin),204(_developer)
+UID:     501
+GID:     20
+描述:    Alice Wang
+家目录:  /Users/alice
+Shell:   /bin/zsh
+组:      staff admin _developer
+```
+
+显示用户的 UID、GID、所属组、描述信息、家目录、默认 Shell 等。不指定用户名时显示当前用户信息。
