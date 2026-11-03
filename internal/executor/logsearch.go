@@ -11,6 +11,33 @@ import (
 	"time"
 )
 
+// runLogList implements `kopsc log list`: list available log sources.
+func runLogList(ctx context.Context, req BuiltinRequest) error {
+	switch runtime.GOOS {
+	case "linux":
+		cmd := exec.CommandContext(ctx, "journalctl", "--list-boots", "--no-pager")
+		cmd.Stdout = req.Stdout
+		cmd.Stderr = req.Stderr
+		return cmd.Run()
+	case "darwin":
+		fmt.Fprintln(req.Stdout, "macOS 日志目录:")
+		fmt.Fprintln(req.Stdout, "  /var/log          - 系统日志")
+		fmt.Fprintln(req.Stdout, "  ~/Library/Logs    - 用户日志")
+		fmt.Fprintln(req.Stdout, "  /Library/Logs     - 全局日志")
+		cmd := exec.CommandContext(ctx, "ls", "-la", "/var/log")
+		cmd.Stdout = req.Stdout
+		cmd.Stderr = req.Stderr
+		return cmd.Run()
+	case "windows":
+		cmd := exec.CommandContext(ctx, "wevtutil", "el")
+		cmd.Stdout = req.Stdout
+		cmd.Stderr = req.Stderr
+		return cmd.Run()
+	default:
+		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+}
+
 // runLogSearch implements `kopsc log search <keyword>`: search system logs.
 func runLogSearch(ctx context.Context, req BuiltinRequest) error {
 	opts, err := parseLogSearchArgs(req.Args)

@@ -6,6 +6,7 @@
 
 | 命令 | 作用 |
 | --- | --- |
+| `kopsc svc list` | 列出所有服务 |
 | `kopsc svc status <服务名>` | 查看服务状态与最近 20 行日志 |
 | `kopsc svc enable <服务名>` | 启用并启动服务（开机自启 + 立即启动） |
 | `kopsc svc disable <服务名>` | 禁用并停止服务 |
@@ -14,6 +15,9 @@
 ## 示例
 
 ```bash
+# 列出所有服务
+kopsc svc list
+
 # 查看 nginx 状态和最近日志
 kopsc svc status nginx
 
@@ -34,6 +38,7 @@ kopsc svc logs nginx -f
 
 | 操作 | Linux | macOS | Windows |
 | --- | --- | --- | --- |
+| list | `systemctl list-unit-files` | `launchctl list` | `sc query state= all` |
 | status | `systemctl status` + `journalctl` | `launchctl list` + `log show` | `sc query` |
 | enable | `systemctl enable` + `start` | `launchctl load -w` | `sc config start=auto` + `start` |
 | disable | `systemctl stop` + `disable` | `launchctl unload -w` | `sc stop` + `config start=disabled` |

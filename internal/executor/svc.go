@@ -10,6 +10,29 @@ import (
 	"strings"
 )
 
+// runSvcList implements `kopsc svc list`: list all services.
+func runSvcList(ctx context.Context, req BuiltinRequest) error {
+	switch runtime.GOOS {
+	case "linux":
+		cmd := exec.CommandContext(ctx, "systemctl", "list-unit-files", "--type=service", "--no-pager")
+		cmd.Stdout = req.Stdout
+		cmd.Stderr = req.Stderr
+		return cmd.Run()
+	case "darwin":
+		cmd := exec.CommandContext(ctx, "launchctl", "list")
+		cmd.Stdout = req.Stdout
+		cmd.Stderr = req.Stderr
+		return cmd.Run()
+	case "windows":
+		cmd := exec.CommandContext(ctx, "sc", "query", "state=", "all")
+		cmd.Stdout = req.Stdout
+		cmd.Stderr = req.Stderr
+		return cmd.Run()
+	default:
+		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+}
+
 // runSvcStatus implements `kopsc svc status <service>`: show service status
 // and recent log lines in one step.
 func runSvcStatus(ctx context.Context, req BuiltinRequest) error {

@@ -642,6 +642,15 @@ func Builtin() *Registry {
 
 		// ----- svc -----
 		{
+			ID:      "svc.list",
+			Group:   "svc",
+			Summary: "列出所有服务",
+			Action: "列出系统中所有服务。" +
+				"Linux: systemctl list-unit-files；macOS: launchctl list；" +
+				"Windows: sc query state= all",
+			Variants: threePlatformBuiltins("svc.list"),
+		},
+		{
 			ID:      "svc.status",
 			Group:   "svc",
 			Summary: "查看服务状态与最近日志",
@@ -783,6 +792,14 @@ func Builtin() *Registry {
 		},
 
 		// ----- log -----
+		{
+			ID:      "log.list",
+			Group:   "log",
+			Summary: "列出可用的日志来源",
+			Action: "列出系统中可用的日志来源。" +
+				"Linux: journalctl --list-boots；macOS: 列出日志目录；Windows: wevtutil el",
+			Variants: threePlatformBuiltins("log.list"),
+		},
 		{
 			ID:      "log.search",
 			Group:   "log",

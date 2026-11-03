@@ -6,12 +6,16 @@
 
 | 命令 | 作用 |
 | --- | --- |
+| `kopsc log list` | 列出可用的日志来源 |
 | `kopsc log search <关键字> [选项]` | 在系统日志中搜索关键字 |
 | `kopsc log last [行数] [-u 服务]` | 查看最近的系统日志 |
 
 ## 示例
 
 ```bash
+# 列出可用的日志来源
+kopsc log list
+
 # 搜索最近 1 小时包含 "error" 的日志
 kopsc log search "error" --since 1h
 
@@ -49,5 +53,6 @@ kopsc log last -u nginx
 
 | 操作 | Linux | macOS | Windows |
 | --- | --- | --- | --- |
+| list | `journalctl --list-boots` | 列出日志目录 | `wevtutil el` |
 | search | `journalctl --grep` | `log show --predicate` | `wevtutil` + 过滤 |
 | last | `journalctl -n` | `log show --last` | `wevtutil /c:` |
